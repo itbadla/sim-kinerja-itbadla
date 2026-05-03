@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -25,5 +26,10 @@ class AppServiceProvider extends ServiceProvider
         if (str_contains(config('app.url'), 'https')) {
             URL::forceScheme('https');
         }
+        // 2. KUNCI MASTER UNTUK ADMIN
+        // Admin akan selalu mengembalikan nilai 'true' di setiap perintah @can apapun
+        Gate::before(function ($user, $ability) {
+            return $user->hasRole('admin') ? true : null;
+        });
     }
 }

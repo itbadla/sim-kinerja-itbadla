@@ -20,19 +20,19 @@ new #[Layout('layouts.guest')] class extends Component
      */
     public function register(): void
     {
-        $validated = $this->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
-            'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
-        ]);
+        // $validated = $this->validate([
+        //     'name' => ['required', 'string', 'max:255'],
+        //     'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
+        //     'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
+        // ]);
 
-        $validated['password'] = Hash::make($validated['password']);
+        // $validated['password'] = Hash::make($validated['password']);
 
-        event(new Registered($user = User::create($validated)));
+        // event(new Registered($user = User::create($validated)));
 
-        Auth::login($user);
+        // Auth::login($user);
 
-        $this->redirect(route('dashboard', absolute: false), navigate: true);
+        // $this->redirect(route('dashboard', absolute: false), navigate: true);
     }
 }; ?>
 

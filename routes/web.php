@@ -4,6 +4,68 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Laravel\Socialite\Facades\Socialite;
+use Livewire\Volt\Volt;
+
+/*
+|--------------------------------------------------------------------------
+| Guest Routes (Halaman Publik)
+|--------------------------------------------------------------------------
+*/
+Route::view('/', 'welcome');
+
+
+/*
+|--------------------------------------------------------------------------
+| Authenticated Routes (SPA Mode dengan wire:navigate)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'verified'])->group(function () {
+    
+    // Dashboard Utama (Akses untuk semua User: Dosen, Tendik, Admin)
+    Volt::route('/dashboard', 'pages.dashboard')
+        ->name('dashboard');
+
+    // Manajemen Profil
+    Volt::route('/profile', 'pages.profile')
+        ->name('profile');
+
+    /*
+    |--------------------------------------------------------------------------
+    | RBAC: Admin Area
+    |--------------------------------------------------------------------------
+    | Hanya user dengan role 'admin' yang bisa mengakses grup ini.
+    | Pastikan Anda sudah menginstal Spatie Permission.
+    */
+    Route::middleware(['role:admin'])->prefix('admin')->name('admin.')->group(function () {
+        
+        // Kelola User (Dosen & Tendik)
+        Volt::route('/users', 'pages.admin.users.index')
+            ->name('users.index');
+            
+        // Kelola Role & Permission
+        Volt::route('/roles', 'pages.admin.roles.index')
+            ->name('roles.index');
+            
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | RBAC: Modul Dosen / Kinerja
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware(['role:dosen|admin'])->prefix('kinerja')->name('kinerja.')->group(function () {
+        
+        Volt::route('/logbook', 'pages.logbook.index')
+            ->name('logbook.index');
+            
+        Volt::route('/tridharma', 'pages.tridharma.index')
+            ->name('tridharma.index');
+            
+    });
+});
+
+
+
 
 /*
 |--------------------------------------------------------------------------
@@ -19,65 +81,57 @@ Route::get('/auth/google/callback', function () {
     try {
         $googleUser = Socialite::driver('google')->user();
         $email = $googleUser->getEmail();
-
-        // 1. Daftar domain yang diizinkan (sesuai kebutuhan Anda)
+        
+        // 1. Definisikan domain yang diizinkan
         $allowedDomains = [
-            'ahmaddahlana.ac.id', 
-            'staff.ahmaddahlan.ac.id', 
-            'student.ahmaddahlan.ac.id'
+            '@ahmaddahlan.ac.id',
+            '@staff.ahmaddahlan.ac.id',
+            '@student.ahmaddahlan.ac.id'
         ];
 
-        // 2. Ambil domain dari email user
-        $userDomain = substr(strrchr($email, "@"), 1);
-
-        if (!in_array($userDomain, $allowedDomains)) {
-            return redirect('/login')->with('error', 'Gunakan email resmi @ahmaddahlan.ac.id');
+        // 2. Tolak jika bukan email kampus
+        if (!\Illuminate\Support\Str::endsWith($email, $allowedDomains)) {
+            return redirect('/login')->with('error', 'Akses ditolak. Gunakan email institusi untuk masuk.');
         }
 
-        // 3. Logika Cari atau Buat User (Tanpa DB::raw)
-        $user = User::where('email', $email)->first();
+        // 3. Cari user di database
+        $user = App\Models\User::where('email', $email)->first();
 
         if ($user) {
-            // Jika user sudah ada, cukup update data profil & google_id
+            // Jika user sudah ada, sinkronkan ID Google-nya
             $user->update([
-                'name' => $googleUser->getName(),
                 'google_id' => $googleUser->getId(),
+                'email_verified_at' => $user->email_verified_at ?? now(),
             ]);
         } else {
-            // Jika user baru, buat akun dengan password random
-            $user = User::create([
+            // JIKA USER BARU: Buat otomatis
+            $user = App\Models\User::create([
                 'name' => $googleUser->getName(),
                 'email' => $email,
                 'google_id' => $googleUser->getId(),
-                'password' => bcrypt(str()->random(16)),
+                'email_verified_at' => now(),
+                'password' => bcrypt(str()->random(16)), // Password acak karena login pakai Google
             ]);
+
+            // PEMBERIAN ROLE OTOMATIS BERDASARKAN DOMAIN
+            if (\Illuminate\Support\Str::endsWith($email, '@student.ahmaddahlan.ac.id')) {
+                // Jika mahasiswa, beri role mahasiswa (pastikan role ini ada di database)
+                $user->assignRole('mahasiswa'); 
+            } elseif (\Illuminate\Support\Str::endsWith($email, '@staff.ahmaddahlan.ac.id')) {
+                // Jika staff, beri role tendik
+                $user->assignRole('tendik');
+            } else {
+                // Jika domain utama (@ahmaddahlan.ac.id), beri role dosen
+                $user->assignRole('dosen');
+            }
         }
 
-        // 4. Login
+        // Login ke sistem
         Auth::login($user);
-        
-        return redirect()->intended(route('dashboard', absolute: false));
+        return redirect()->intended('/dashboard');
 
     } catch (\Exception $e) {
-        // Tips: gunakan $e->getMessage() untuk debug jika masih error
-        return redirect('/login')->with('error', 'Gagal login via Google.');
+        return redirect('/login')->with('error', 'Gagal masuk dengan Google. Pastikan Anda memilih akun yang benar.');
     }
 });
-
-/*
-|--------------------------------------------------------------------------
-| Standard Breeze Routes
-|--------------------------------------------------------------------------
-*/
-
-Route::view('/', 'welcome');
-
-Route::view('dashboard', 'dashboard')
-    ->middleware(['auth', 'verified'])
-    ->name('dashboard');
-
-Route::view('profile', 'profile')
-    ->middleware(['auth'])
-    ->name('profile');
-
 require __DIR__.'/auth.php';

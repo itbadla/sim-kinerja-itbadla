@@ -4,20 +4,38 @@
 
 @layer base {
     :root {
-        /* Warna Utama Kampus (Hijau) */
-        --color-primary: #10b981; /* Emerald 500 - Terang untuk dark mode */
-        --color-primary-hover: #059669; /* Emerald 600 */
+        /* Emerald 600 - Ini warna hijau yang Anda sukai sebelumnya */
+        --color-primary: 5 150 105;       
         
-        /* Warna Aksen (Kuning) */
-        --color-accent: #eab308; /* Yellow 500 */
-        --color-accent-hover: #ca8a04; /* Yellow 600 */
+        /* Emerald 700 - Warna saat tombol disentuh (hover) */
+        --color-primary-hover: 4 120 87;  
+
+        /* Warna pendukung lainnya tetap putih bersih */
+        --color-bg: 255 255 255;          
+        --color-surface: 255 255 255;     
+        --color-border: 241 245 249;      
+        --color-text-main: 15 23 42;      
+        --color-text-muted: 100 116 139;  
+
+        /* Kuning aksen (Yellow 500) */
+        --color-accent: 234 179 8;        
+    }
+
+    .dark {
+        /* DARK MODE (Professional Dark) */
+        --color-bg: 15 23 42;             /* Slate 900 */
+        --color-surface: 30 41 59;        /* Slate 800 */
+        --color-border: 51 65 85;         /* Slate 700 */
         
-        /* Warna Dasar & Teks */
-        --color-text-main: #f8fafc; /* Slate 50 */
-        --color-text-muted: #94a3b8; /* Slate 400 */
+        --color-text-main: 248 250 252;   /* Slate 50 */
+        --color-text-muted: 148 163 184;  /* Slate 400 */
         
-        /* Warna Surface untuk Card (Glassmorphism) */
-        --color-surface: rgba(15, 23, 42, 0.4); 
-        --color-surface-border: rgba(255, 255, 255, 0.1); 
+        /* Emerald & Kuning di dark mode biasanya tetap sama atau sedikit lebih terang */
+        --color-primary: 5 150 105;          /* Emerald 600 */
+        --color-accent: 250 204 21;       /* Kuning 400 */
+    }
+
+    body {
+        @apply bg-theme-body text-theme-text transition-colors duration-300;
     }
 }
