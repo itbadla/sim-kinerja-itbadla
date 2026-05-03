@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        /* Warna Utama Kampus (Hijau) */
+        --color-primary: #10b981; /* Emerald 500 - Terang untuk dark mode */
+        --color-primary-hover: #059669; /* Emerald 600 */
+        
+        /* Warna Aksen (Kuning) */
+        --color-accent: #eab308; /* Yellow 500 */
+        --color-accent-hover: #ca8a04; /* Yellow 600 */
+        
+        /* Warna Dasar & Teks */
+        --color-text-main: #f8fafc; /* Slate 50 */
+        --color-text-muted: #94a3b8; /* Slate 400 */
+        
+        /* Warna Surface untuk Card (Glassmorphism) */
+        --color-surface: rgba(15, 23, 42, 0.4); 
+        --color-surface-border: rgba(255, 255, 255, 0.1); 
+    }
+}
