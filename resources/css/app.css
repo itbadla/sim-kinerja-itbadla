@@ -38,4 +38,15 @@
     body {
         @apply bg-theme-body text-theme-text transition-colors duration-300;
     }
+
+    .custom-scrollbar {
+        scroll-behavior: smooth;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(var(--color-primary), 0.2);
+        border-radius: 10px;
+    }
 }
