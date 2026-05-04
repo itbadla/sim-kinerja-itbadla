@@ -50,4 +50,16 @@ class User extends Authenticatable
     {
         return $this->hasMany(Logbook::class, 'verified_by');
     }
+    // app/Models/User.php
+    public function assignmentUnits()
+    {
+        return $this->belongsToMany(Unit::class, 'unit_user')
+                    ->withPivot('jabatan_di_unit')
+                    ->withTimestamps();
+    }
+    // app/Models/User.php
+    public function assignedUnits()
+    {
+        return $this->belongsToMany(Unit::class, 'unit_user');
+    }
 }

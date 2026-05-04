@@ -38,4 +38,10 @@ class Unit extends Model
     {
         return $this->hasMany(Unit::class, 'parent_id');
     }
+
+    // app/Models/Unit.php
+    public function members()
+    {
+        return $this->belongsToMany(User::class, 'unit_user');
+    }
 }

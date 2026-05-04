@@ -10,6 +10,7 @@ new #[Layout('layouts.app')] class extends Component {
     use WithPagination;
 
     public $search = '';
+    public $searchStaff = '';
 
     // ==========================================
     // STATE: MODAL FORM (CREATE & EDIT)
@@ -20,6 +21,7 @@ new #[Layout('layouts.app')] class extends Component {
     public $nama_unit = '';
     public $parent_id = '';
     public $kepala_unit_id = '';
+    public $staffIds = []; // Untuk menampung ID staff yang dipilih
 
     // ==========================================
     // STATE: MODAL HAPUS (DELETE)
@@ -48,6 +50,10 @@ new #[Layout('layouts.app')] class extends Component {
             $this->nama_unit = $unit->nama_unit;
             $this->parent_id = $unit->parent_id;
             $this->kepala_unit_id = $unit->kepala_unit_id;
+            // --- TAMBAHKAN BARIS INI ---
+            // Ambil ID semua user yang tergabung di unit ini melalui relasi members
+            $this->staffIds = $unit->members()->pluck('users.id')->map(fn($id) => (string)$id)->toArray();
+            // ---------------------------
         } else {
             // Mode Tambah Baru
             $this->reset(['unitId', 'kode_unit', 'nama_unit', 'parent_id', 'kepala_unit_id']);
@@ -63,9 +69,11 @@ new #[Layout('layouts.app')] class extends Component {
             'nama_unit' => 'required|string|max:255',
             'parent_id' => 'nullable|exists:units,id',
             'kepala_unit_id' => 'nullable|exists:users,id',
+            'staffIds' => 'nullable|array', // Validasi staffIds
         ]);
 
-        Unit::updateOrCreate(
+        // Simpan data unit
+        $unit = Unit::updateOrCreate(
             ['id' => $this->unitId],
             [
                 'kode_unit' => strtoupper($this->kode_unit),
@@ -74,6 +82,8 @@ new #[Layout('layouts.app')] class extends Component {
                 'kepala_unit_id' => $this->kepala_unit_id ?: null,
             ]
         );
+
+        $unit->members()->sync($this->staffIds);
 
         $this->isModalOpen = false;
     }
@@ -102,54 +112,52 @@ new #[Layout('layouts.app')] class extends Component {
     // ==========================================
     public function with(): array
     {
+        // ==========================================
+        // 1. LOGIKA DATA UNIT (TABEL UTAMA)
+        // ==========================================
         if ($this->search) {
             // Mode Pencarian: Tampilkan data secara flat (datar)
-            $paginator = Unit::with(['parent', 'kepalaUnit'])
+            $paginator = Unit::with(['parent', 'kepalaUnit', 'members'])
                 ->where('nama_unit', 'like', '%' . $this->search . '%')
                 ->orWhere('kode_unit', 'like', '%' . $this->search . '%')
                 ->orderBy('nama_unit')
                 ->paginate(10);
                 
             $paginator->getCollection()->transform(function($unit) {
-                $unit->level = 0; // Set level 0 agar tidak berjenjang saat pencarian
+                $unit->level = 0; 
                 return $unit;
             });
             
             $units = $paginator;
         } else {
             // Mode Standar: Tampilkan data secara Hierarkis (Berjenjang)
-            // 1. Ambil & Paginate hanya Top Level Unit (Induk Utama)
-            $topLevelPaginator = Unit::with(['parent', 'kepalaUnit'])
+            $topLevelPaginator = Unit::with(['parent', 'kepalaUnit', 'members'])
                 ->whereNull('parent_id')
                 ->orderBy('nama_unit')
                 ->paginate(10);
                 
-            // 2. Ambil semua Anak Unit (Descendants)
-            $allDescendants = Unit::with(['parent', 'kepalaUnit'])
+            $allDescendants = Unit::with(['parent', 'kepalaUnit', 'members'])
                 ->whereNotNull('parent_id')
                 ->orderBy('nama_unit')
                 ->get();
                 
             $sortedUnits = collect();
             
-            // 3. Fungsi Rekursif untuk menyusun anak di bawah induk yang tepat
             $buildTree = function($parentId, $level) use (&$buildTree, $allDescendants, &$sortedUnits) {
-                if ($level > 10) return; // Mencegah infinite loop (kedalaman maks 10 level)
+                if ($level > 10) return; 
                 foreach($allDescendants->where('parent_id', $parentId) as $unit) {
                     $unit->level = $level;
                     $sortedUnits->push($unit);
-                    $buildTree($unit->id, $level + 1); // Cari anak dari unit ini lagi
+                    $buildTree($unit->id, $level + 1);
                 }
             };
 
-            // 4. Masukkan Induk -> Diikuti Anak-anaknya
             foreach($topLevelPaginator as $topUnit) {
                 $topUnit->level = 0;
                 $sortedUnits->push($topUnit);
                 $buildTree($topUnit->id, 1);
             }
             
-            // 5. Bungkus kembali dalam Paginator agar links() UI berfungsi
             $units = new \Illuminate\Pagination\LengthAwarePaginator(
                 $sortedUnits,
                 $topLevelPaginator->total(),
@@ -159,15 +167,31 @@ new #[Layout('layouts.app')] class extends Component {
             );
         }
 
+        // ==========================================
+        // 2. LOGIKA DATA USER (PLOTTING STAFF)
+        // ==========================================
+        // Menggunakan searchStaff untuk menyaring 100+ user agar mudah dicari
+        $usersForPlotting = User::query()
+            ->when($this->searchStaff, function($query) {
+                $query->where(function($q) {
+                    $q->where('name', 'like', '%' . $this->searchStaff . '%')
+                    ->orWhere('email', 'like', '%' . $this->searchStaff . '%');
+                });
+            })
+            ->orderBy('name')
+            ->limit(50) // Membatasi beban DOM, user lain bisa dicari via input search
+            ->get();
+
         return [
             'units' => $units,
             
-            // Pilihan Induk (Kecuali dirinya sendiri agar tidak menjadi anak dari dirinya sendiri)
+            // Pilihan Induk: Mencegah unit menjadi anak dari dirinya sendiri
             'allUnits' => Unit::when($this->unitId, function($query) {
                                 return $query->where('id', '!=', $this->unitId);
                             })->orderBy('nama_unit')->get(),
                             
-            'users' => User::orderBy('name')->get(), 
+            // Data User yang sudah difilter untuk modal plotting
+            'users' => $usersForPlotting, 
         ];
     }
 }; ?>
@@ -213,6 +237,7 @@ new #[Layout('layouts.app')] class extends Component {
                         <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest">Nama Unit</th>
                         <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest">Induk (Parent)</th>
                         <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest">Kepala Unit</th>
+                        <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest">Jumlah Staff</th>
                         <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest text-right">Aksi</th>
                     </tr>
                 </thead>
@@ -266,13 +291,25 @@ new #[Layout('layouts.app')] class extends Component {
                                     <span class="text-xs italic text-red-500 bg-red-50 dark:bg-red-500/10 px-2 py-1 rounded border border-red-200 dark:border-red-500/20">Belum Diatur</span>
                                 @endif
                             </td>
-
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-2 text-sm text-theme-text">
+                                    <svg class="w-4 h-4 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                    <span class="font-bold">{{ $unit->members->count() }} Orang</span>
+                                </div>
+                            </td>
                             <!-- Aksi -->
-                            <td class="px-6 py-4 text-right space-x-2">
+                            <td class="px-6 py-4 text-right space-x-1 whitespace-nowrap">
+                                <!-- TOMBOL DETAIL -->
+                                <a href="{{ route('admin.units.detail', $unit) }}" class="text-theme-muted hover:text-blue-500 transition-colors p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 border border-transparent hover:border-blue-200 dark:hover:border-blue-500/20 inline-flex items-center justify-center" title="Detail Unit">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                </a>
+
+                                <!-- TOMBOL EDIT -->
                                 <button wire:click="openModal({{ $unit->id }})" class="text-theme-muted hover:text-primary transition-colors p-2 rounded-lg hover:bg-theme-body border border-transparent hover:border-theme-border" title="Edit Unit">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                                 </button>
 
+                                <!-- TOMBOL HAPUS -->
                                 <button wire:click="confirmDelete({{ $unit->id }})" class="text-theme-muted hover:text-red-500 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 border border-transparent hover:border-red-200 dark:hover:border-red-500/20" title="Hapus Unit">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                 </button>
@@ -301,31 +338,39 @@ new #[Layout('layouts.app')] class extends Component {
     <!-- MODAL FORM (TAMBAH / EDIT UNIT) -->
     <!-- ========================================== -->
     @if($isModalOpen)
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-theme-text/20 backdrop-blur-sm transition-opacity px-4">
-            <div class="bg-theme-surface rounded-2xl border border-theme-border shadow-2xl w-full max-w-lg overflow-hidden">
-                <div class="px-6 py-4 border-b border-theme-border bg-theme-body/30">
-                    <h3 class="text-lg font-bold text-theme-text">{{ $unitId ? 'Edit Unit Kerja' : 'Tambah Unit Baru' }}</h3>
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-theme-text/20 backdrop-blur-sm transition-opacity px-4 py-6">
+            <!-- Container Utama: Menggunakan flex-col dan max-height agar bisa di-scroll -->
+            <div class="bg-theme-surface rounded-2xl border border-theme-border shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh] overflow-hidden">
+                
+                <!-- 1. FIXED HEADER: Tidak ikut bergeser saat di-scroll -->
+                <div class="px-6 py-4 border-b border-theme-border bg-theme-body/30 flex justify-between items-center flex-shrink-0">
+                    <h3 class="text-lg font-bold text-theme-text">
+                        {{ $unitId ? 'Edit Unit Kerja' : 'Tambah Unit Baru' }}
+                    </h3>
+                    <button wire:click="$set('isModalOpen', false)" class="text-theme-muted hover:text-theme-text transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
                 </div>
                 
-                <form wire:submit="saveUnit">
-                    <div class="p-6 space-y-4">
+                <!-- 2. SCROLLABLE BODY: Area pengisian form -->
+                <div class="flex-1 overflow-y-auto p-6 custom-scrollbar">
+                    <form wire:submit="saveUnit" id="unitForm" class="space-y-5">
+                        <!-- Baris 1: Kode & Nama -->
                         <div class="grid grid-cols-2 gap-4">
-                            <!-- Kode Unit -->
                             <div class="col-span-2 sm:col-span-1">
                                 <label class="block text-xs font-bold text-theme-muted uppercase tracking-wider mb-2">Kode Unit <span class="text-red-500">*</span></label>
                                 <input type="text" wire:model="kode_unit" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2.5 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text font-mono uppercase" placeholder="Contoh: LPPM">
-                                @error('kode_unit') <span class="text-xs text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
+                                @error('kode_unit') <span class="text-[10px] text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
                             </div>
 
-                            <!-- Nama Unit -->
                             <div class="col-span-2 sm:col-span-1">
                                 <label class="block text-xs font-bold text-theme-muted uppercase tracking-wider mb-2">Nama Unit <span class="text-red-500">*</span></label>
                                 <input type="text" wire:model="nama_unit" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2.5 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text" placeholder="Lembaga Penelitian...">
-                                @error('nama_unit') <span class="text-xs text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
+                                @error('nama_unit') <span class="text-[10px] text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
                             </div>
                         </div>
 
-                        <!-- Unit Induk (Parent) -->
+                        <!-- Unit Induk -->
                         <div>
                             <label class="block text-xs font-bold text-theme-muted uppercase tracking-wider mb-2">Unit Induk (Bawahan Dari)</label>
                             <select wire:model="parent_id" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2.5 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text">
@@ -334,8 +379,7 @@ new #[Layout('layouts.app')] class extends Component {
                                     <option value="{{ $u->id }}">{{ $u->kode_unit ? '['.$u->kode_unit.'] ' : '' }}{{ $u->nama_unit }}</option>
                                 @endforeach
                             </select>
-                            <p class="text-[10px] text-theme-muted mt-1">Pilih jika unit ini berada di bawah fakultas atau biro lain.</p>
-                            @error('parent_id') <span class="text-xs text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
+                            @error('parent_id') <span class="text-[10px] text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
                         </div>
 
                         <!-- Kepala Unit -->
@@ -344,21 +388,80 @@ new #[Layout('layouts.app')] class extends Component {
                             <select wire:model="kepala_unit_id" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2.5 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text">
                                 <option value="">-- Belum Ditentukan --</option>
                                 @foreach($users as $user)
-                                    <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->email }})</option>
+                                    <option value="{{ $user->id }}">{{ $user->name }}</option>
                                 @endforeach
                             </select>
-                            <p class="text-[10px] text-theme-muted mt-1">User yang dipilih akan memiliki hak verifikasi kinerja untuk staf di unit ini.</p>
-                            @error('kepala_unit_id') <span class="text-xs text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
+                            @error('kepala_unit_id') <span class="text-[10px] text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
                         </div>
-                    </div>
-                    
-                    <div class="px-6 py-4 border-t border-theme-border bg-theme-body/30 flex justify-end gap-3">
-                        <button type="button" wire:click="$set('isModalOpen', false)" class="px-4 py-2 text-sm font-bold text-theme-muted hover:text-theme-text transition-colors">Batal</button>
-                        <button type="submit" class="px-4 py-2 text-sm font-bold text-white bg-primary hover:bg-primary-hover rounded-xl shadow-md transition-all">
-                            {{ $unitId ? 'Simpan Perubahan' : 'Tambah Unit' }}
-                        </button>
-                    </div>
-                </form>
+
+                        <hr class="border-theme-border border-dashed my-4">
+
+                        <!-- SEKSI PLOTTING STAFF DENGAN SEARCH -->
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-end">
+                                <label class="block text-xs font-bold text-theme-muted uppercase tracking-wider">
+                                    Plotting Anggota Staff
+                                </label>
+                                <span class="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                                    {{ count($staffIds) }} Terpilih
+                                </span>
+                            </div>
+
+                            <!-- Mini Search Internal Staff -->
+                            <div class="relative">
+                                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-theme-muted">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                                </span>
+                                <input 
+                                    type="text" 
+                                    wire:model.live="searchStaff" 
+                                    placeholder="Cari nama staff..." 
+                                    class="block w-full pl-9 pr-3 py-2 border border-theme-border bg-theme-body rounded-xl text-xs focus:ring-primary focus:border-primary text-theme-text"
+                                >
+                            </div>
+                            
+                            <!-- List Checkbox Staff (Scrollable Box) -->
+                            <div class="max-h-52 overflow-y-auto border border-theme-border bg-theme-body/50 rounded-xl p-1 space-y-1 custom-scrollbar">
+                                @forelse($users as $user)
+                                    <label class="flex items-center gap-3 p-2 hover:bg-theme-surface rounded-lg cursor-pointer transition-colors group">
+                                        <input 
+                                            type="checkbox" 
+                                            wire:model="staffIds" 
+                                            value="{{ $user->id }}"
+                                            class="w-4 h-4 rounded border-theme-border text-primary focus:ring-primary bg-theme-surface"
+                                        >
+                                        <div class="flex flex-col">
+                                            <span class="text-sm font-medium text-theme-text group-hover:text-primary transition-colors">
+                                                {{ $user->name }}
+                                            </span>
+                                            <span class="text-[10px] text-theme-muted uppercase tracking-widest">
+                                                {{ $user->email }}
+                                            </span>
+                                        </div>
+                                    </label>
+                                @empty
+                                    <div class="p-4 text-center text-xs text-theme-muted italic">
+                                        Staff tidak ditemukan.
+                                    </div>
+                                @endforelse
+                            </div>
+                            <p class="text-[9px] text-theme-muted italic leading-tight">
+                                * Gunakan pencarian jika staff yang dimaksud tidak muncul di daftar awal.
+                            </p>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- 3. FIXED FOOTER: Selalu di posisi bawah modal -->
+                <div class="px-6 py-4 border-t border-theme-border bg-theme-body/30 flex justify-end gap-3 flex-shrink-0">
+                    <button type="button" wire:click="$set('isModalOpen', false)" class="px-4 py-2 text-sm font-bold text-theme-muted hover:text-theme-text transition-colors">
+                        Batal
+                    </button>
+                    <!-- Gunakan atribut form="unitForm" agar tombol di luar tag form bisa melakukan submit -->
+                    <button type="submit" form="unitForm" class="px-5 py-2 text-sm font-bold text-white bg-primary hover:bg-primary-hover rounded-xl shadow-md shadow-primary/20 transition-all">
+                        {{ $unitId ? 'Simpan Perubahan' : 'Tambah Unit' }}
+                    </button>
+                </div>
             </div>
         </div>
     @endif

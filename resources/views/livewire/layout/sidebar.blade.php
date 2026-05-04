@@ -113,7 +113,7 @@ new class extends Component {
             </x-nav-link-sidebar>
             @endif
 
-            @if(auth()->user()->can('verifikasi-logbook'))
+            @if(auth()->user()->can('be-atasan'))
             <x-nav-link-sidebar class="{{ request()->routeIs('verifikasi.logbook.*') ? 'sidebar-active' : '' }}" :href="route('verifikasi.logbook.index')" :active="request()->routeIs('verifikasi.logbook.*')" wire:navigate>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Verifikasi Kinerja
@@ -125,33 +125,45 @@ new class extends Component {
         <!-- ================= GRUP: KEUANGAN ================= -->
         @if(auth()->user()->can('ajukan-dana') || auth()->user()->can('track-dana') || auth()->user()->can('verifikasi-dana') || auth()->user()->can('kelola-lpj'))
             <p class="px-3 text-[10px] font-bold text-theme-muted uppercase tracking-[0.2em] mt-8 mb-4">Modul Keuangan</p>
-            
             @if(auth()->user()->can('ajukan-dana'))
-            <x-nav-link-sidebar class="{{ request()->routeIs('dashboard') ? 'sidebar-active' : '' }}" :href="'#'" :active="false" wire:navigate>
-                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Pengajuan Dana
-            </x-nav-link-sidebar>
-            @endif
-
-            @if(auth()->user()->can('track-dana'))
-            <x-nav-link-sidebar class="{{ request()->routeIs('dashboard') ? 'sidebar-active' : '' }}" :href="'#'" :active="false" wire:navigate>
+            <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.status-anggaran.index') ? 'sidebar-active' : '' }}" :href="route('keuangan.status-anggaran.index')" :active="request()->routeIs('keuangan.status-anggaran.index')" wire:navigate>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
                 Status Anggaran
             </x-nav-link-sidebar>
             @endif
 
+            @if(auth()->user()->can('ajukan-dana'))
+            <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.pengajuan.index') ? 'sidebar-active' : '' }}" :href="route('keuangan.pengajuan.index')" :active="request()->routeIs('keuangan.pengajuan.index')" wire:navigate>
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Pengajuan Dana
+            </x-nav-link-sidebar>
+            @endif
+
+            @if(auth()->user()->can('ajukan-dana'))
+                <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.lpj.index') ? 'sidebar-active' : '' }}" :href="route('keuangan.lpj.index')" :active="request()->routeIs('keuangan.lpj.index')" wire:navigate>
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                    Laporan LPJ
+                </x-nav-link-sidebar>
+            @endif
+
             @if(auth()->user()->can('verifikasi-dana'))
-            <x-nav-link-sidebar class="{{ request()->routeIs('dashboard') ? 'sidebar-active' : '' }}" :href="'#'" :active="false" wire:navigate>
-                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.verifikasi.index') ? 'sidebar-active' : '' }}" :href="route('keuangan.verifikasi.index')" :active="request()->routeIs('keuangan.verifikasi.index')" wire:navigate>
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                 Verifikasi Keuangan
             </x-nav-link-sidebar>
             @endif
 
-            @if(auth()->user()->can('kelola-lpj'))
-            <x-nav-link-sidebar class="{{ request()->routeIs('dashboard') ? 'sidebar-active' : '' }}" :href="'#'" :active="false" wire:navigate>
-                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
-                Laporan LPJ
-            </x-nav-link-sidebar>
+            @if(auth()->user()->can('verifikasi-dana'))
+                <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.verifikasi-lpj.index') ? 'sidebar-active' : '' }}" :href="route('keuangan.verifikasi-lpj.index')" :active="request()->routeIs('keuangan.verifikasi-lpj.index')" wire:navigate>
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                    Verifikasi LPJ
+                </x-nav-link-sidebar>
+            @endif
+            @if(auth()->user()->can('verifikasi-dana'))
+                <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.pengembalian.index') ? 'sidebar-active' : '' }}" :href="route('keuangan.pengembalian.index')" :active="request()->routeIs('keuangan.pengembalian.index')" wire:navigate>
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                    Verifikasi Pengembalian
+                </x-nav-link-sidebar>
             @endif
         @endif
 

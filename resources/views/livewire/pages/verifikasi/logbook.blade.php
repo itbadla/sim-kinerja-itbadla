@@ -85,13 +85,28 @@ new #[Layout('layouts.app')] class extends Component {
     // ==========================================
     public function with(): array
     {
-        // 1. Cari tahu atasan ini memimpin unit mana saja?
-        $managedUnitIds = Unit::where('kepala_unit_id', auth()->id())->pluck('id');
+        // 1. Cek apakah user adalah Admin
+        $isAdmin = auth()->user()->hasRole('admin');
 
-        // 2. Ambil logbook dari unit-unit tersebut (KECUALI DRAFT)
+        // 2. Tentukan Unit mana saja yang bisa diakses
+        if ($isAdmin) {
+            // Jika admin, ambil semua ID unit untuk keperluan query logbook
+            $managedUnitIds = Unit::pluck('id');
+            $managedUnitNames = ['Semua Unit (Mode Admin)'];
+        } else {
+            // Jika bukan admin, hanya ambil unit yang dipimpin langsung
+            $managedUnitIds = Unit::where('kepala_unit_id', auth()->id())->pluck('id');
+            $managedUnitNames = Unit::whereIn('id', $managedUnitIds)->pluck('kode_unit')->toArray();
+        }
+
+        // 3. Ambil data logbook dengan filter
         $logbooks = Logbook::with(['user', 'unit'])
-            ->whereIn('unit_id', $managedUnitIds)
-            ->where('status', '!=', 'draft') // Draft disembunyikan
+            // Jika bukan admin, batasi berdasarkan unit yang dipimpin. 
+            // Jika admin, query ini dilewati (melihat semua unit).
+            ->when(!$isAdmin, function($query) use ($managedUnitIds) {
+                $query->whereIn('unit_id', $managedUnitIds);
+            })
+            ->where('status', '!=', 'draft') // Draft tetap disembunyikan dari siapapun
             ->when($this->filterStatus !== 'semua', function($query) {
                 $query->where('status', $this->filterStatus);
             })
@@ -106,8 +121,7 @@ new #[Layout('layouts.app')] class extends Component {
 
         return [
             'logbooks' => $logbooks,
-            // Info unit apa saja yang dia kelola (untuk ditampilkan di header)
-            'managedUnits' => Unit::whereIn('id', $managedUnitIds)->pluck('kode_unit')->toArray()
+            'managedUnits' => $managedUnitNames
         ];
     }
 }; ?>
@@ -155,94 +169,109 @@ new #[Layout('layouts.app')] class extends Component {
     <div class="bg-theme-surface border border-theme-border rounded-2xl overflow-hidden shadow-sm">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
-                <thead class="bg-theme-body/50 border-b border-theme-border">
-                    <tr>
-                        <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest whitespace-nowrap">Staf & Waktu</th>
-                        <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest w-1/2">Aktivitas</th>
-                        <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest text-center">Status</th>
-                        <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest text-right">Tindakan</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-theme-border">
-                    @forelse($logbooks as $logbook)
-                        <tr wire:key="verify-{{ $logbook->id }}" class="hover:bg-theme-body/30 transition-colors">
-                            
-                            <!-- Kolom Staf & Waktu -->
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <div class="flex items-center gap-3 mb-2">
-                                    <div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                                        {{ substr($logbook->user->name, 0, 2) }}
-                                    </div>
-                                    <div>
-                                        <div class="text-sm font-bold text-theme-text">{{ $logbook->user->name }}</div>
-                                        <div class="text-[10px] uppercase font-bold text-theme-muted tracking-wider">{{ $logbook->unit->kode_unit ?? 'Unit' }}</div>
-                                    </div>
-                                </div>
-                                <div class="text-xs text-theme-muted flex items-center gap-1.5 mt-1">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                                    {{ $logbook->tanggal->format('d M Y') }} ({{ $logbook->jam_mulai->format('H:i') }}-{{ $logbook->jam_selesai->format('H:i') }})
-                                </div>
-                            </td>
+    <thead class="bg-theme-body/50 border-b border-theme-border">
+        <tr>
+            <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest whitespace-nowrap">Staf & Waktu</th>
+            
+            <!-- TAMBAHAN: Kolom Unit khusus untuk Admin -->
+            @if(auth()->user()->hasRole('admin'))
+                <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest">Unit Kerja</th>
+            @endif
 
-                            <!-- Kolom Aktivitas -->
-                            <td class="px-6 py-4">
-                                <p class="text-sm text-theme-text font-medium">{{ $logbook->deskripsi_aktivitas }}</p>
-                                @if($logbook->output)
-                                    <p class="text-xs text-theme-muted mt-1.5 flex items-center gap-1.5">
-                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                        <span class="font-semibold text-theme-text/80">Output:</span> {{ $logbook->output }}
-                                    </p>
-                                @endif
-                                
-                                @if($logbook->link_bukti)
-                                    <a href="{{ $logbook->link_bukti }}" target="_blank" class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded mt-2 hover:underline">
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
-                                        Lihat Bukti
-                                    </a>
-                                @endif
-                            </td>
+            <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest w-1/2">Aktivitas</th>
+            <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest text-center">Status</th>
+            <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest text-right">Tindakan</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-theme-border">
+        @forelse($logbooks as $logbook)
+            <tr wire:key="verify-{{ $logbook->id }}" class="hover:bg-theme-body/30 transition-colors">
+                
+                <!-- Kolom Staf & Waktu -->
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs shrink-0">
+                            {{ substr($logbook->user->name, 0, 2) }}
+                        </div>
+                        <div>
+                            <div class="text-sm font-bold text-theme-text">{{ $logbook->user->name }}</div>
+                            <!-- Jika bukan admin, kode unit tetap ditampilkan kecil di sini sebagai context -->
+                            @if(!auth()->user()->hasRole('admin'))
+                                <div class="text-[10px] uppercase font-bold text-theme-muted tracking-wider">{{ $logbook->unit->kode_unit ?? 'Unit' }}</div>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="text-xs text-theme-muted flex items-center gap-1.5 mt-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        {{ $logbook->tanggal->format('d M Y') }}
+                    </div>
+                </td>
 
-                            <!-- Kolom Status -->
-                            <td class="px-6 py-4 text-center align-middle">
-                                @if($logbook->status === 'pending')
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-500">MENUNGGU</span>
-                                @elseif($logbook->status === 'approved')
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-500">DISETUJUI</span>
-                                @elseif($logbook->status === 'rejected')
-                                    <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-500">DITOLAK</span>
-                                @endif
-                            </td>
+                <!-- TAMBAHAN: Data Unit khusus untuk Admin -->
+                @if(auth()->user()->hasRole('admin'))
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm font-bold text-theme-text">{{ $logbook->unit->nama_unit ?? 'N/A' }}</div>
+                        <div class="text-[10px] font-mono text-primary font-bold uppercase tracking-widest">{{ $logbook->unit->kode_unit ?? '-' }}</div>
+                    </td>
+                @endif
 
-                            <!-- Kolom Aksi -->
-                            <td class="px-6 py-4 text-right whitespace-nowrap">
-                                <div class="flex items-center justify-end gap-2">
-                                    <!-- Tombol Setuju -->
-                                    <button wire:click="approve({{ $logbook->id }})" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-green-500 hover:bg-green-600 rounded-lg shadow-sm transition-colors {{ $logbook->status === 'approved' ? 'opacity-50 cursor-not-allowed' : '' }}" {{ $logbook->status === 'approved' ? 'disabled' : '' }}>
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                                        Setuju
-                                    </button>
+                <!-- Kolom Aktivitas -->
+                <td class="px-6 py-4">
+                    <p class="text-sm text-theme-text font-medium">{{ $logbook->deskripsi_aktivitas }}</p>
+                    @if($logbook->output)
+                        <p class="text-xs text-theme-muted mt-1.5 flex items-center gap-1.5">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="font-semibold text-theme-text/80">Output:</span> {{ $logbook->output }}
+                        </p>
+                    @endif
+                    
+                    @if($logbook->link_bukti)
+                        <a href="{{ $logbook->link_bukti }}" target="_blank" class="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded mt-2 hover:underline">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                            Lihat Bukti
+                        </a>
+                    @endif
+                </td>
 
-                                    <!-- Tombol Tolak -->
-                                    <button wire:click="openRejectModal({{ $logbook->id }})" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-theme-text bg-theme-body border border-theme-border hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-500/10 dark:hover:border-red-500/30 rounded-lg shadow-sm transition-colors">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                        Tolak
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="4" class="px-6 py-12 text-center">
-                                <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-theme-body mb-4">
-                                    <svg class="w-8 h-8 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                </div>
-                                <h3 class="text-base font-bold text-theme-text">Tidak Ada Logbook</h3>
-                                <p class="text-sm text-theme-muted mt-1">Belum ada aktivitas yang perlu diverifikasi saat ini.</p>
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                <!-- Kolom Status -->
+                <td class="px-6 py-4 text-center align-middle">
+                    @if($logbook->status === 'pending')
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-500">MENUNGGU</span>
+                    @elseif($logbook->status === 'approved')
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-500">DISETUJUI</span>
+                    @elseif($logbook->status === 'rejected')
+                        <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-500">DITOLAK</span>
+                    @endif
+                </td>
+
+                <!-- Kolom Aksi -->
+                <td class="px-6 py-4 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-2">
+                        <button wire:click="approve({{ $logbook->id }})" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-green-500 hover:bg-green-600 rounded-lg shadow-sm transition-colors {{ $logbook->status === 'approved' ? 'opacity-50 cursor-not-allowed' : '' }}" {{ $logbook->status === 'approved' ? 'disabled' : '' }}>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                            Setuju
+                        </button>
+
+                        <button wire:click="openRejectModal({{ $logbook->id }})" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-theme-text bg-theme-body border border-theme-border hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-500/10 dark:hover:border-red-500/30 rounded-lg shadow-sm transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            Tolak
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        @empty
+            <tr>
+                <td colspan="{{ auth()->user()->hasRole('admin') ? '5' : '4' }}" class="px-6 py-12 text-center">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-theme-body mb-4">
+                        <svg class="w-8 h-8 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <h3 class="text-base font-bold text-theme-text">Tidak Ada Logbook</h3>
+                    <p class="text-sm text-theme-muted mt-1">Belum ada aktivitas yang perlu diverifikasi saat ini.</p>
+                </td>
+            </tr>
+        @endforelse
+    </tbody>
+</table>
         </div>
         
         @if($logbooks->hasPages())

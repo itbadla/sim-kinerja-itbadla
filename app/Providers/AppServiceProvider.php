@@ -5,6 +5,8 @@ namespace App\Providers;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Gate;
+use App\Models\User;
+use App\Models\Unit;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -31,5 +33,10 @@ class AppServiceProvider extends ServiceProvider
         Gate::before(function ($user, $ability) {
             return $user->hasRole('admin') ? true : null;
         });
+
+        Gate::define('be-atasan', function (User $user) {
+        return $user->can('verifikasi-logbook');
+        });
     }
+    
 }
