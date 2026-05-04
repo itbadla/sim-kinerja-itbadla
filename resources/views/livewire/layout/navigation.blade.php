@@ -87,11 +87,22 @@ new class extends Component {
                     </a>
                     
                     <hr class="border-theme-border my-1">
-                    
-                    <!-- Tombol Keluar dengan Logika Volt (SPA) -->
-                    <button wire:click="logout" class="w-full text-left px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors">
-                        Keluar
-                    </button>
+
+                    <!-- JIKA SEDANG IMPERSONATE, TAMPILKAN TOMBOL KEMBALI -->
+                    @if(session()->has('impersonated_by'))
+                        <a href="{{ route('stop.impersonate') }}" wire:navigate class="w-full text-left px-4 py-2 text-sm font-medium text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors flex items-center gap-2">
+                            <!-- Ikon Kembali / Undo -->
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/></svg>
+                            Kembali ke Admin
+                        </a>
+                    @else
+                        <!-- Tombol Keluar dengan Logika Volt (SPA) -->
+                        <button wire:click="logout" class="w-full text-left px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex items-center gap-2">
+                            <!-- Ikon Keluar / Logout -->
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                            Keluar
+                        </button>
+                    @endif  
                 </div>
             </div>
             
