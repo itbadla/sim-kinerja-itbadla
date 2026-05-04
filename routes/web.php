@@ -50,11 +50,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('/users', 'pages.admin.users.index')
             ->name('users.index')
             ->middleware('can:kelola-user');
+        
+        // Kelola Unit
+        Route::middleware('can:kelola-unit')->group(function () {
+            // Daftar Unit
+            Volt::route('/units', 'pages.admin.units.index')
+                ->name('units.index');
 
-        // Kelola Unit (Pastikan path file di resources/views/livewire/admin/units/index.blade.php)
-        Volt::route('/units', 'pages.admin.units.index')
-            ->name('units.index')
-            ->middleware('can:kelola-unit');
+            // Detail & Pengaturan Unit (Menggunakan Route Model Binding {unit})
+            Volt::route('/units/{unit}', 'pages.admin.units.detail')
+                ->name('units.detail'); 
+        });
             
         // Kelola Role & Permission
         Volt::route('/roles', 'pages.admin.roles.index')
@@ -68,8 +74,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     | RBAC: Area Verifikator (Untuk Atasan / Kepala Unit)
     |--------------------------------------------------------------------------
     */
-    Route::middleware(['can:verifikasi-logbook'])->prefix('verifikasi')->name('verifikasi.')->group(function () {
-        
+    Route::middleware(['can:be-atasan'])->prefix('verifikasi')->name('verifikasi.')->group(function () {
         // Halaman tempat Kepala Unit melihat/approve logbook bawahannya
         Volt::route('/logbook', 'pages.verifikasi.logbook')
             ->name('logbook.index');
@@ -93,6 +98,37 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('can:akses-tridharma');
             
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | RBAC: Modul Keuangan (Pengajuan Dana)
+    |--------------------------------------------------------------------------
+    */
+    Route::middleware(['auth', 'verified', 'can:ajukan-dana'])->prefix('keuangan')->name('keuangan.')->group(function () {
+          // status anggaran
+        Volt::route('/status-anggaran', 'pages.keuangan.status-anggaran.index')
+            ->name('status-anggaran.index');
+        // Halaman Riwayat & Form Pengajuan Dana
+        Volt::route('/pengajuan', 'pages.keuangan.pengajuan.index')
+            ->name('pengajuan.index');
+        // Halaman Laporan LPJ
+        Volt::route('/lpj', 'pages.keuangan.lpj.index')
+            ->name('lpj.index'); // Gunakan permission yang sama dengan pengajuan
+        // verifikasi 
+        Volt::route('/verifikasi', 'pages.keuangan.verifikasi.index')
+            ->name('verifikasi.index')
+            ->middleware('can:verifikasi-dana');
+        // Halaman Verifikasi LPJ (Hanya untuk Admin Keuangan)
+        Volt::route('/verifikasi-lpj', 'pages.keuangan.verifikasi-lpj.index')
+            ->name('verifikasi-lpj.index')
+            ->middleware('can:verifikasi-dana');
+        // pengembalian dana
+        Volt::route('/pengembalian-dana', 'pages.keuangan.pengembalian.index')
+            ->name('pengembalian.index')
+            ->middleware('can:verifikasi-dana');
+    });
+
+    
 });
 
 
