@@ -6,43 +6,43 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    /**
+     * Run the migrations.
+     */
     public function up(): void
     {
         Schema::create('logbooks', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('unit_id')->nullable()->constrained('units')->nullOnDelete();
             
-            // Relasi Utama
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('unit_id')->nullable()->constrained()->nullOnDelete(); // Denormalisasi agar query super cepat
+            // Tautkan ke Proker jika logbook ini adalah progres pengerjaan proker
+            $table->foreignId('work_program_id')->nullable()->constrained('work_programs')->nullOnDelete();
             
-            // Waktu Pelaksanaan
             $table->date('tanggal');
             $table->time('jam_mulai');
             $table->time('jam_selesai');
             
-            // Detail Kinerja
-            $table->string('kategori')->default('tugas_utama'); // Contoh: tugas_utama, tambahan, magang
+            $table->string('kategori')->default('tugas_utama');
             $table->text('deskripsi_aktivitas');
-            $table->string('output')->nullable(); // Hasil kerja
+            $table->string('output')->nullable(); 
+            $table->string('file_bukti')->nullable(); 
+            $table->string('link_bukti')->nullable(); 
             
-            // Bukti Dukung
-            $table->string('file_bukti')->nullable(); // Path di storage
-            $table->string('link_bukti')->nullable(); // URL Eksternal
-            
-            // Status dan Verifikasi
             $table->enum('status', ['draft', 'pending', 'approved', 'rejected'])->default('draft');
             $table->text('catatan_verifikator')->nullable();
+            
+            // Verifikator harian
             $table->foreignId('verified_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('verified_at')->nullable();
             
             $table->timestamps();
             $table->softDeletes();
 
-            // === INDEXING UNTUK OPTIMASI PERFORMA ===
-            // Karena tabel ini akan sangat besar, kita pasang index pada kolom yang sering dicari (filter)
+            // Indexing agar dashboard cepat saat memuat ribuan data logbook
             $table->index('tanggal');
             $table->index('status');
-            $table->index(['unit_id', 'status']); // Composite index untuk filter dashboard Kepala Unit
+            $table->index(['unit_id', 'status']); 
         });
     }
 

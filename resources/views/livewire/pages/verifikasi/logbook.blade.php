@@ -86,7 +86,7 @@ new #[Layout('layouts.app')] class extends Component {
     public function with(): array
     {
         // 1. Cek apakah user adalah Admin
-        $isAdmin = auth()->user()->hasRole('admin');
+        $isAdmin = auth()->user()->hasRole('Super Admin');
 
         // 2. Tentukan Unit mana saja yang bisa diakses
         if ($isAdmin) {
@@ -174,7 +174,7 @@ new #[Layout('layouts.app')] class extends Component {
             <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest whitespace-nowrap">Staf & Waktu</th>
             
             <!-- TAMBAHAN: Kolom Unit khusus untuk Admin -->
-            @if(auth()->user()->hasRole('admin'))
+            @if(auth()->user()->hasRole('Super Admin'))
                 <th class="px-6 py-4 text-xs font-bold text-theme-muted uppercase tracking-widest">Unit Kerja</th>
             @endif
 
@@ -196,7 +196,7 @@ new #[Layout('layouts.app')] class extends Component {
                         <div>
                             <div class="text-sm font-bold text-theme-text">{{ $logbook->user->name }}</div>
                             <!-- Jika bukan admin, kode unit tetap ditampilkan kecil di sini sebagai context -->
-                            @if(!auth()->user()->hasRole('admin'))
+                            @if(!auth()->user()->hasRole('Super Admin'))
                                 <div class="text-[10px] uppercase font-bold text-theme-muted tracking-wider">{{ $logbook->unit->kode_unit ?? 'Unit' }}</div>
                             @endif
                         </div>
@@ -208,7 +208,7 @@ new #[Layout('layouts.app')] class extends Component {
                 </td>
 
                 <!-- TAMBAHAN: Data Unit khusus untuk Admin -->
-                @if(auth()->user()->hasRole('admin'))
+                @if(auth()->user()->hasRole('Super Admin'))
                     <td class="px-6 py-4 whitespace-nowrap">
                         <div class="text-sm font-bold text-theme-text">{{ $logbook->unit->nama_unit ?? 'N/A' }}</div>
                         <div class="text-[10px] font-mono text-primary font-bold uppercase tracking-widest">{{ $logbook->unit->kode_unit ?? '-' }}</div>
@@ -261,7 +261,7 @@ new #[Layout('layouts.app')] class extends Component {
             </tr>
         @empty
             <tr>
-                <td colspan="{{ auth()->user()->hasRole('admin') ? '5' : '4' }}" class="px-6 py-12 text-center">
+                <td colspan="{{ auth()->user()->hasRole('Super Admin') ? '5' : '4' }}" class="px-6 py-12 text-center">
                     <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-theme-body mb-4">
                         <svg class="w-8 h-8 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>

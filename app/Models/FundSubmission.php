@@ -2,49 +2,46 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FundSubmission extends Model
 {
-    use HasFactory, SoftDeletes;
+    use SoftDeletes;
 
-    // Kolom yang boleh diisi
     protected $fillable = [
         'user_id',
         'unit_id',
+        'work_program_id',
         'tipe_pengajuan',
         'nominal',
         'keperluan',
         'file_lampiran',
         'status',
         'catatan_verifikator',
-        // Tambahan untuk LPJ:
+        'status_lpj',
         'nominal_realisasi',
         'file_lpj',
-        'status_lpj',
-        // pengembalian dana
         'waktu_pengembalian',
         'catatan_pengembalian',
     ];
 
-    // Casting tipe data agar lebih mudah diakses di frontend
-    protected $casts = [
-        'nominal' => 'decimal:2',
-        'nominal_realisasi' => 'decimal:2', // Tambahkan ini juga
-        'waktu_pengembalian' => 'datetime',
-    ];
-
-    // Relasi ke User pengaju
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    // Relasi ke Unit terkait pengajuan
-    public function unit()
+    public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class);
+    }
+
+    /**
+     * Pengajuan dana ini merujuk ke Proker mana?
+     */
+    public function workProgram(): BelongsTo
+    {
+        return $this->belongsTo(WorkProgram::class);
     }
 }

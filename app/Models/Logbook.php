@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Logbook extends Model
 {
@@ -12,6 +13,7 @@ class Logbook extends Model
     protected $fillable = [
         'user_id',
         'unit_id',
+        'work_program_id',
         'tanggal',
         'jam_mulai',
         'jam_selesai',
@@ -26,27 +28,38 @@ class Logbook extends Model
         'verified_at',
     ];
 
-    protected $casts = [
-        'tanggal' => 'date',
-        'jam_mulai' => 'datetime:H:i',
-        'jam_selesai' => 'datetime:H:i',
-        'verified_at' => 'datetime',
-    ];
-
-    // Logbook ini milik siapa?
-    public function user()
+    protected function casts(): array
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return [
+            'tanggal' => 'date',
+            'jam_mulai' => 'datetime:H:i',
+            'jam_selesai' => 'datetime:H:i',
+            'verified_at' => 'datetime',
+        ];
     }
 
-    // Logbook ini dikerjakan untuk unit mana?
-    public function unit()
+    public function user(): BelongsTo
     {
-        return $this->belongsTo(Unit::class, 'unit_id');
+        return $this->belongsTo(User::class);
     }
 
-    // Siapa yang memverifikasi logbook ini?
-    public function verifikator()
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
+    }
+
+    /**
+     * Logbook ini bagian dari eksekusi Proker mana?
+     */
+    public function workProgram(): BelongsTo
+    {
+        return $this->belongsTo(WorkProgram::class);
+    }
+
+    /**
+     * Siapa yang memverifikasi logbook ini?
+     */
+    public function verifier(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
     }

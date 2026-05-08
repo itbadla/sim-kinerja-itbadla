@@ -11,13 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Perhatikan bagian (Blueprint $table) di bawah ini
         Schema::create('unit_user', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('unit_id')->constrained()->onDelete('cascade');
-            $table->string('jabatan_di_unit')->nullable();
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('unit_id')->constrained('units')->cascadeOnDelete();
+            
+            $table->foreignId('position_id')->nullable()->constrained('positions')->cascadeOnDelete();
+            $table->boolean('is_active')->default(true);
             $table->timestamps();
+            
+            // Mencegah duplikasi data
+            $table->unique(['user_id', 'unit_id']);
         });
     }
 

@@ -2,26 +2,39 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
-use Illuminate\Database\Eloquent\Attributes\Fillable;
-use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Builder;
 
-#[Fillable(['name', 'email', 'password', 'google_id', 'email_verified_at', 'unit_id', 'jabatan'])]
-#[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
-    /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, HasRoles;
 
     /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
+     * Atribut yang dapat diisi (Mass Assignable).
+     */
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'google_id',
+    ];
+
+    /**
+     * Atribut yang disembunyikan saat serialisasi.
+     */
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    /**
+     * Casting tipe data.
      */
     protected function casts(): array
     {
@@ -31,35 +44,64 @@ class User extends Authenticatable
         ];
     }
 
-    // --- RELASI ---
-
-    // 1 User berada di 1 Unit
-    public function unit()
+    /**
+     * Accessor untuk Unit Tunggal (Homebase)
+     * Memungkinkan Anda memanggil $user->unit (tanpa s).
+     * Ini akan mengambil unit pertama dari daftar unit user.
+     */
+    protected function unit(): Attribute
     {
-        return $this->belongsTo(Unit::class);
+        return Attribute::make(
+            get: fn () => $this->units->first(),
+        );
     }
 
-    // 1 User punya banyak Logbook (sebagai pembuat)
-    public function logbooks()
-    {
-        return $this->hasMany(Logbook::class, 'user_id');
-    }
-
-    // 1 User (sebagai atasan) memverifikasi banyak Logbook
-    public function verifiedLogbooks()
-    {
-        return $this->hasMany(Logbook::class, 'verified_by');
-    }
-    // app/Models/User.php
-    public function assignmentUnits()
+    /**
+     * Relasi Utama ke Unit (Many-to-Many via unit_user).
+     * PERBAIKAN: Menggunakan position_id sesuai skema DB baru
+     */
+    public function units(): BelongsToMany
     {
         return $this->belongsToMany(Unit::class, 'unit_user')
-                    ->withPivot('jabatan_di_unit')
-                    ->withTimestamps();
+            ->withPivot('position_id', 'is_active')
+            ->withTimestamps();
     }
-    // app/Models/User.php
-    public function assignedUnits()
+
+    /**
+     * Relasi ke Unit yang dipimpin oleh User ini.
+     */
+    public function ledUnits(): HasMany
     {
-        return $this->belongsToMany(Unit::class, 'unit_user');
+        return $this->hasMany(Unit::class, 'kepala_unit_id');
+    }
+
+    /**
+     * Relasi ke pengajuan dana yang dibuat oleh User.
+     */
+    public function fundSubmissions(): HasMany
+    {
+        return $this->hasMany(FundSubmission::class);
+    }
+
+    /**
+     * Relasi ke logbook kinerja harian User.
+     */
+    public function logbooks(): HasMany
+    {
+        return $this->hasMany(Logbook::class);
+    }
+
+    /**
+     * Scope untuk mencari bawahan dari atasan tertentu.
+     */
+    public function scopeBawahan(Builder $query, User $atasan)
+    {
+        $unitIds = Unit::where('kepala_unit_id', $atasan->id)->get()->map(function($unit) {
+            return array_merge([$unit->id], $unit->getAllChildrenIds());
+        })->flatten()->unique()->toArray();
+
+        return $query->whereHas('units', function($q) use ($unitIds) {
+            $q->whereIn('units.id', $unitIds);
+        })->where('users.id', '!=', $atasan->id); // Jangan tampilkan diri sendiri
     }
 }

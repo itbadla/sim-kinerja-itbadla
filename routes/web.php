@@ -12,13 +12,14 @@ use Livewire\Volt\Volt;
 |--------------------------------------------------------------------------
 */
 Route::view('/', 'welcome');
+
 Route::get('/stop-impersonate', function () {
     if (session()->has('impersonated_by')) {
         $adminId = session()->get('impersonated_by');
         session()->forget('impersonated_by');
         auth()->loginUsingId($adminId);
     }
-    return redirect()->route('admin.users.index'); // Sesuaikan dengan route kelola user Anda
+    return redirect()->route('admin.users.index');
 })->name('stop.impersonate');
 
 
@@ -29,112 +30,124 @@ Route::get('/stop-impersonate', function () {
 */
 Route::middleware(['auth', 'verified'])->group(function () {
     
-    // Dashboard Utama (Akses untuk semua User: Dosen, Tendik, Admin)
+    // ==========================================
+    // UTAMA
+    // ==========================================
     Volt::route('/dashboard', 'pages.dashboard')
-        ->name('dashboard');
+        ->name('dashboard')
+        ->middleware('can:dasbor');
 
-    // Manajemen Profil
     Volt::route('/profile', 'pages.profile')
-        ->name('profile');
+        ->name('profile')
+        ->middleware('can:profil-saya');
 
-    /*
-    |--------------------------------------------------------------------------
-    | RBAC: Admin Area
-    |--------------------------------------------------------------------------
-    | Menggunakan "can:" (permission) agar lebih fleksibel dibanding "role:".
-    | Jika ada staff non-admin yang diberi tugas kelola unit, ia tetap bisa masuk.
-    */
+
+    // ==========================================
+    // MODUL PERENCANAAN (RAKER)
+    // ==========================================
+    Route::prefix('perencanaan')->name('perencanaan.')->group(function () {
+        
+        // Input & Kelola Program Kerja
+        Volt::route('/proker', 'pages.perencanaan.proker.index')
+            ->name('proker.index')
+            ->middleware('can:program-kerja');
+
+        // Verifikasi Proker oleh Pimpinan / LPM
+        Volt::route('/verifikasi', 'pages.perencanaan.verifikasi.index')
+            ->name('verifikasi.index')
+            ->middleware('can:verifikasi-raker');
+    });
+
+
+    // ==========================================
+    // MODUL KINERJA (LOGBOOK)
+    // ==========================================
+    Route::prefix('kinerja')->name('kinerja.')->group(function () {
+        
+        // Akses logbook harian staf/dosen
+        Volt::route('/logbook', 'pages.logbook.index')
+            ->name('logbook.index')
+            ->middleware('can:logbook-harian');
+
+        // Team Saya (Dashboard Pantauan Atasan)
+        Volt::route('/team', 'pages.kinerja.team.index')
+            ->name('team.index')
+            ->middleware('can:team-saya');
+    });
+
+    Route::prefix('verifikasi')->name('verifikasi.')->group(function () {
+        
+        // Verifikasi logbook oleh atasan langsung
+        Volt::route('/logbook', 'pages.verifikasi.logbook')
+            ->name('logbook.index')
+            ->middleware('can:verifikasi-logbook');
+    });
+
+
+    // ==========================================
+    // MODUL KEUANGAN
+    // ==========================================
+    Route::prefix('keuangan')->name('keuangan.')->group(function () {
+        
+        // Pengajuan Dana oleh Unit/Staff
+        Volt::route('/pengajuan', 'pages.keuangan.pengajuan.index')
+            ->name('pengajuan.index')
+            ->middleware('can:pengajuan-dana');
+            
+        // Laporan Pertanggungjawaban (LPJ)
+        Volt::route('/lpj', 'pages.keuangan.lpj.index')
+            ->name('lpj.index')
+            ->middleware('can:laporan-lpj'); 
+
+        // Verifikasi Keuangan & LPJ oleh Bagian Keuangan
+        Volt::route('/verifikasi', 'pages.keuangan.verifikasi.index')
+            ->name('verifikasi.index')
+            ->middleware('can:verifikasi-keuangan');
+    });
+
+
+    // ==========================================
+    // ADMINISTRATOR AREA (RBAC & MASTER DATA)
+    // ==========================================
     Route::prefix('admin')->name('admin.')->group(function () {
         
         // Kelola User
-        Volt::route('/users', 'pages.admin.users.index')
+        Volt::route('/users', 'pages.users.index')
             ->name('users.index')
             ->middleware('can:kelola-user');
         
-        // Kelola Unit
+        // Kelola Unit & Hierarki
         Route::middleware('can:kelola-unit')->group(function () {
-            // Daftar Unit
-            Volt::route('/units', 'pages.admin.units.index')
+            Volt::route('/units', 'pages.units.index')
                 ->name('units.index');
 
-            // Detail & Pengaturan Unit (Menggunakan Route Model Binding {unit})
-            Volt::route('/units/{unit}', 'pages.admin.units.detail')
+            Volt::route('/units/{unit}', 'pages.units.detail')
                 ->name('units.detail'); 
         });
             
-        // Kelola Role & Permission
-        Volt::route('/roles', 'pages.admin.roles.index')
+        // Kelola Role & Permission (Spatie)
+        Volt::route('/roles', 'pages.roles.index')
             ->name('roles.index')
-            ->middleware('can:kelola-role');
+            ->middleware('can:peran-dan-izin');
+
+        // Kelola Master Jabatan
+        Volt::route('/positions', 'pages.positions.index')
+            ->name('positions.index')
+            ->middleware('can:master-jabatan');
+
+        // Kelola Master Data IKU & IKT
+        Volt::route('/indikator', 'pages.indikator.index')
+            ->name('indikator.index')
+            ->middleware('can:indikator-kinerja');
             
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | RBAC: Area Verifikator (Untuk Atasan / Kepala Unit)
-    |--------------------------------------------------------------------------
-    */
-    Route::middleware(['can:be-atasan'])->prefix('verifikasi')->name('verifikasi.')->group(function () {
-        // Halaman tempat Kepala Unit melihat/approve logbook bawahannya
-        Volt::route('/logbook', 'pages.verifikasi.logbook')
-            ->name('logbook.index');
-            
-    });
-
-    /*
-    |--------------------------------------------------------------------------
-    | RBAC: Modul Kinerja (Dosen, Staff, Magang)
-    |--------------------------------------------------------------------------
-    */
-    Route::middleware(['can:isi-logbook'])->prefix('kinerja')->name('kinerja.')->group(function () {
-        
-        // Akses logbook umum (Tendik, Magang, Dosen)
-        Volt::route('/logbook', 'pages.logbook.index')
-            ->name('logbook.index');
-            
-        // Akses khusus dosen untuk input Tridharma
-        Volt::route('/tridharma', 'pages.tridharma.index')
-            ->name('tridharma.index')
-            ->middleware('can:akses-tridharma');
-            
-    });
-
-    /*
-    |--------------------------------------------------------------------------
-    | RBAC: Modul Keuangan (Pengajuan Dana)
-    |--------------------------------------------------------------------------
-    */
-    Route::middleware(['auth', 'verified', 'can:ajukan-dana'])->prefix('keuangan')->name('keuangan.')->group(function () {
-          // status anggaran
-        Volt::route('/status-anggaran', 'pages.keuangan.status-anggaran.index')
-            ->name('status-anggaran.index');
-        // Halaman Riwayat & Form Pengajuan Dana
-        Volt::route('/pengajuan', 'pages.keuangan.pengajuan.index')
-            ->name('pengajuan.index');
-        // Halaman Laporan LPJ
-        Volt::route('/lpj', 'pages.keuangan.lpj.index')
-            ->name('lpj.index'); // Gunakan permission yang sama dengan pengajuan
-        // verifikasi 
-        Volt::route('/verifikasi', 'pages.keuangan.verifikasi.index')
-            ->name('verifikasi.index')
-            ->middleware('can:verifikasi-dana');
-        // Halaman Verifikasi LPJ (Hanya untuk Admin Keuangan)
-        Volt::route('/verifikasi-lpj', 'pages.keuangan.verifikasi-lpj.index')
-            ->name('verifikasi-lpj.index')
-            ->middleware('can:verifikasi-dana');
-        // pengembalian dana
-        Volt::route('/pengembalian-dana', 'pages.keuangan.pengembalian.index')
-            ->name('pengembalian.index')
-            ->middleware('can:verifikasi-dana');
-    });
-
-    
 });
 
 
 /*
 |--------------------------------------------------------------------------
-| Google Socialite Routes
+| Google Socialite Routes (SSO Kampus)
 |--------------------------------------------------------------------------
 */
 
@@ -147,7 +160,7 @@ Route::get('/auth/google/callback', function () {
         $googleUser = Socialite::driver('google')->user();
         $email = $googleUser->getEmail();
         
-        // 1. Definisikan domain yang diizinkan
+        // 1. Definisikan domain institusi yang diizinkan
         $allowedDomains = [
             '@ahmaddahlan.ac.id',
             '@staff.ahmaddahlan.ac.id',
@@ -178,16 +191,16 @@ Route::get('/auth/google/callback', function () {
                 'password' => bcrypt(str()->random(16)), // Password acak karena login pakai Google
             ]);
 
-            // PEMBERIAN ROLE OTOMATIS (Sesuai dengan nama role di Seeder kita)
+            // PEMBERIAN ROLE OTOMATIS (Sesuai dengan nama role di Seeder)
             if (\Illuminate\Support\Str::endsWith($email, '@student.ahmaddahlan.ac.id')) {
-                // Role untuk mahasiswa magang
-                $user->assignRole('magang'); 
+                // Pastikan role 'Magang' sudah Anda tambahkan di Seeder jika ingin menggunakan ini
+                $user->assignRole('Magang'); 
             } elseif (\Illuminate\Support\Str::endsWith($email, '@staff.ahmaddahlan.ac.id')) {
-                // Role untuk staf/lembaga
-                $user->assignRole('lembaga'); 
+                // Menggunakan huruf kapital sesuai DatabaseSeeder
+                $user->assignRole('Staff'); 
             } else {
-                // Domain utama (@ahmaddahlan.ac.id) untuk dosen
-                $user->assignRole('dosen');
+                // Domain utama (@ahmaddahlan.ac.id) diasumsikan sebagai Dosen
+                $user->assignRole('Dosen');
             }
         }
 

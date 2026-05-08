@@ -8,25 +8,37 @@ new #[Layout('layouts.app')] class extends Component {
     public function with(): array
     {
         // 1. Ambil data user yang sedang login beserta relasinya
-        $user = Auth::user()->load(['unit.kepalaUnit', 'unit.parent.kepalaUnit', 'roles', 'assignedUnits']);
+        // PERBAIKAN: Gunakan 'units' untuk me-load relasi murni (Jamak)
+        $user = Auth::user()->load([
+            'units.kepalaUnit', 
+            'units.parent.kepalaUnit', 
+            'roles'
+        ]);
         
         // 2. Cek apakah user memimpin suatu unit (Jabatan Struktural)
         $headedUnits = Unit::where('kepala_unit_id', $user->id)->get();
 
         // 3. Logika Penentuan Atasan Langsung
         $atasan = null;
-        if ($user->unit) {
-            if ($user->unit->kepala_unit_id === $user->id) {
+        $primaryUnit = $user->unit; // Menggunakan Accessor yang sudah kita buat di Model User
+
+        if ($primaryUnit) {
+            if ($primaryUnit->kepala_unit_id === $user->id) {
                 // Jika dia adalah Kepala Unit, maka atasannya adalah Kepala dari Unit Induknya
-                $atasan = $user->unit->parent ? $user->unit->parent->kepalaUnit : null;
+                $atasan = $primaryUnit->parent ? $primaryUnit->parent->kepalaUnit : null;
             } else {
                 // Jika dia staff biasa, atasannya adalah Kepala Unit tempatnya bernaung
-                $atasan = $user->unit->kepalaUnit;
+                $atasan = $primaryUnit->kepalaUnit;
             }
         }
 
+        // 4. Ambil Jabatan dari tabel pivot untuk Unit Utama
+        $jabatan = $primaryUnit && $primaryUnit->pivot ? $primaryUnit->pivot->jabatan_di_unit : 'Staff / Karyawan';
+
         return [
             'user' => $user,
+            'primaryUnit' => $primaryUnit,
+            'jabatan' => $jabatan,
             'headedUnits' => $headedUnits,
             'atasan' => $atasan,
         ];
@@ -58,8 +70,9 @@ new #[Layout('layouts.app')] class extends Component {
                 <h2 class="text-xl font-extrabold text-theme-text">{{ $user->name }}</h2>
                 <p class="text-sm text-theme-muted mb-3">{{ $user->email }}</p>
                 
+                <!-- PERBAIKAN: Menggunakan variabel $jabatan yang ditarik dari pivot -->
                 <div class="inline-block px-3 py-1.5 bg-primary/10 border border-primary/20 text-primary rounded-xl text-xs font-bold uppercase tracking-widest mb-3">
-                    {{ $user->jabatan ?: 'Staff / Karyawan' }}
+                    {{ $jabatan }}
                 </div>
 
                 <!-- Hak Akses (Roles) -->
@@ -94,7 +107,8 @@ new #[Layout('layouts.app')] class extends Component {
                         </div>
                         <div>
                             <p class="text-[10px] font-bold text-theme-muted uppercase tracking-wider">Unit Homebase</p>
-                            <p class="text-sm font-bold text-theme-text">{{ $user->unit ? $user->unit->nama_unit : 'Belum ditempatkan' }}</p>
+                            <!-- PERBAIKAN: Menggunakan variabel $primaryUnit -->
+                            <p class="text-sm font-bold text-theme-text">{{ $primaryUnit ? $primaryUnit->nama_unit : 'Belum ditempatkan' }}</p>
                         </div>
                     </div>
 
@@ -117,7 +131,7 @@ new #[Layout('layouts.app')] class extends Component {
             </div>
             
             <!-- Daftar Penugasan Tambahan -->
-            @if($headedUnits->count() > 0 || $user->assignedUnits->count() > 0)
+            @if($headedUnits->count() > 0 || $user->units->count() > 1)
                 <div class="mt-5 pt-4 border-t border-theme-border relative z-10">
                     @if($headedUnits->count() > 0)
                         <div class="mb-2">
@@ -132,14 +146,17 @@ new #[Layout('layouts.app')] class extends Component {
                         </div>
                     @endif
 
-                    @if($user->assignedUnits->count() > 0)
+                    <!-- PERBAIKAN: Iterasi dari relasi murni 'units' dan mengecualikan Unit Utama -->
+                    @if($user->units->count() > 1)
                         <div>
-                            <span class="text-[10px] text-theme-muted font-bold uppercase">Staff Bantuan di:</span>
+                            <span class="text-[10px] text-theme-muted font-bold uppercase">Staff Bantuan / Multi-Unit di:</span>
                             <div class="flex flex-wrap gap-1 mt-1">
-                                @foreach($user->assignedUnits as $unit)
-                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-theme-body border border-theme-border text-theme-text">
-                                        {{ $unit->kode_unit ?? $unit->nama_unit }}
-                                    </span>
+                                @foreach($user->units as $unit)
+                                    @if($primaryUnit && $unit->id !== $primaryUnit->id)
+                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-theme-body border border-theme-border text-theme-text">
+                                            {{ $unit->kode_unit ?? $unit->nama_unit }} ({{ $unit->pivot->jabatan_di_unit }})
+                                        </span>
+                                    @endif
                                 @endforeach
                             </div>
                         </div>

@@ -31,11 +31,40 @@ class AppServiceProvider extends ServiceProvider
         // 2. KUNCI MASTER UNTUK ADMIN
         // Admin akan selalu mengembalikan nilai 'true' di setiap perintah @can apapun
         Gate::before(function ($user, $ability) {
-            return $user->hasRole('admin') ? true : null;
+            return $user->hasRole('Super Admin') ? true : null;
         });
 
         Gate::define('be-atasan', function (User $user) {
         return $user->can('verifikasi-logbook');
+        });
+
+        // app/Providers/AppServiceProvider.php
+
+        Gate::define('verifikasi-bawahan', function (User $user, User $target) {
+            // 1. Cek apakah user punya hak verifikasi secara global
+            if (!$user->can('verifikasi-logbook')) {
+                return false;
+            }
+
+            // 2. Ambil semua Unit yang dipimpin oleh user ini
+            $unitIdsDikelola = Unit::where('kepala_unit_id', $user->id)->get()->map(function($unit) {
+                // Ambil ID unit itu sendiri + semua ID sub-unit di bawahnya
+                return array_merge([$unit->id], $unit->getAllChildrenIds());
+            })->flatten()->unique()->toArray();
+
+            // 3. Cek apakah target berada di salah satu unit tersebut
+            // Kita asumsikan target memiliki homebase di $target->units->first()
+            $targetUnitId = $target->units->first()?->id;
+
+            return in_array($targetUnitId, $unitIdsDikelola);
+        });
+
+        // Perbarui Gate be-atasan agar lebih "cerdas"
+        Gate::define('be-atasan', function ($user) {
+            // Izinkan jika dia punya permission verifikasi 
+            // ATAU dia memegang role pimpinan (Rektor/WR/Dekan/Kaprodi)
+            return $user->can('verifikasi-logbook') || 
+                $user->hasAnyRole(['Rektor', 'Wakil Rektor', 'Dekan', 'Kaprodi', 'Ketua LPM', 'Ketua LPPM', 'Kepala Biro']);
         });
     }
     

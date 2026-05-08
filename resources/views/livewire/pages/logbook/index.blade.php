@@ -20,6 +20,8 @@ new #[Layout('layouts.app')] class extends Component {
     // ==========================================
     public $isModalOpen = false;
     public $logbookId = null;
+    public $unit_id = null;
+    public $userUnits = [];
     public $tanggal;
     public $jam_mulai;
     public $jam_selesai;
@@ -40,6 +42,12 @@ new #[Layout('layouts.app')] class extends Component {
     {
         $this->filterBulan = date('Y-m'); // Default filter: bulan ini
         $this->tanggal = date('Y-m-d'); // Default input form: hari ini
+        
+        // Load units for user
+        $this->userUnits = Auth::user()->units()->get();
+        if ($this->userUnits->count() > 0) {
+            $this->unit_id = $this->userUnits->first()->id;
+        }
     }
 
     public function updatingSearch()
@@ -70,6 +78,7 @@ new #[Layout('layouts.app')] class extends Component {
             }
 
             $this->logbookId = $id;
+            $this->unit_id = $logbook->unit_id;
             $this->tanggal = $logbook->tanggal->format('Y-m-d');
             $this->jam_mulai = $logbook->jam_mulai->format('H:i');
             $this->jam_selesai = $logbook->jam_selesai->format('H:i');
@@ -80,6 +89,11 @@ new #[Layout('layouts.app')] class extends Component {
             $this->file_bukti_lama = $logbook->file_bukti;
         } else {
             $this->reset(['logbookId', 'deskripsi_aktivitas', 'output', 'link_bukti']);
+            if ($this->userUnits->count() > 0) {
+                $this->unit_id = $this->userUnits->first()->id;
+            } else {
+                $this->unit_id = null;
+            }
             $this->tanggal = date('Y-m-d');
             $this->kategori = 'tugas_utama';
             $this->jam_mulai = '08:00';
@@ -95,6 +109,7 @@ new #[Layout('layouts.app')] class extends Component {
     public function saveLogbook($status = 'pending')
     {
         $this->validate([
+            'unit_id' => 'required|exists:units,id',
             'tanggal' => 'required|date',
             'jam_mulai' => 'required',
             'jam_selesai' => 'required|after:jam_mulai',
@@ -107,7 +122,7 @@ new #[Layout('layouts.app')] class extends Component {
 
         $data = [
             'user_id' => Auth::id(),
-            'unit_id' => Auth::user()->unit_id, // Ambil unit_id user otomatis
+            'unit_id' => $this->unit_id,
             'tanggal' => $this->tanggal,
             'jam_mulai' => $this->jam_mulai,
             'jam_selesai' => $this->jam_selesai,
@@ -369,6 +384,19 @@ new #[Layout('layouts.app')] class extends Component {
                     <!-- Body Scrollable -->
                     <div class="p-6 overflow-y-auto custom-scrollbar space-y-6 flex-1">
                         
+                        <!-- Pilihan Unit (Jika > 1) -->
+                        @if(count($userUnits) > 1)
+                            <div>
+                                <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1.5">Kirim Logbook Ke Unit <span class="text-red-500">*</span></label>
+                                <select wire:model="unit_id" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2.5 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text">
+                                    @foreach($userUnits as $unit)
+                                        <option value="{{ $unit->id }}">{{ $unit->nama_unit }}</option>
+                                    @endforeach
+                                </select>
+                                @error('unit_id') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                            </div>
+                        @endif
+
                         <!-- Waktu Pelaksanaan -->
                         <div class="bg-theme-body p-4 rounded-xl border border-theme-border">
                             <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-3">Waktu Pelaksanaan</label>

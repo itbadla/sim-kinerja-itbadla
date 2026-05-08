@@ -88,8 +88,8 @@ new #[Layout('layouts.app')] class extends Component {
             'editRoleName.unique' => 'Nama Role ini sudah ada.',
         ]);
 
-        // Cegah pengubahan nama role super admin (opsional tapi disarankan)
-        if ($this->selectedRole->name !== 'admin') {
+        // Cegah pengubahan nama role Super Admin (opsional tapi disarankan)
+        if ($this->selectedRole->name !== 'Super Admin') {
             $this->selectedRole->name = strtolower($this->editRoleName);
             $this->selectedRole->save();
         }
@@ -105,8 +105,8 @@ new #[Layout('layouts.app')] class extends Component {
     // ==========================================
     public function confirmDelete(Role $role)
     {
-        // Proteksi ekstra: Jangan biarkan admin dihapus
-        if ($role->name === 'admin') {
+        // Proteksi ekstra: Jangan biarkan Super Admin dihapus
+        if ($role->name === 'Super Admin') {
             return; 
         }
 
@@ -169,7 +169,7 @@ new #[Layout('layouts.app')] class extends Component {
                         <tr class="hover:bg-theme-body/30 transition-colors">
                             <td class="px-6 py-4">
                                 <div class="inline-flex items-center gap-2">
-                                    @if($role->name === 'admin')
+                                    @if($role->name === 'Super Admin')
                                         <svg class="w-5 h-5 text-accent" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
                                     @endif
                                     <span class="text-sm font-bold text-theme-text uppercase tracking-wider">{{ $role->name }}</span>
@@ -177,7 +177,7 @@ new #[Layout('layouts.app')] class extends Component {
                             </td>
                             <td class="px-6 py-4">
                                 <div class="flex flex-wrap gap-2">
-                                    @if($role->name === 'admin')
+                                    @if($role->name === 'Super Admin')
                                         <span class="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-accent/10 text-accent border border-accent/20">
                                             Akses Penuh (All Permissions)
                                         </span>
@@ -199,7 +199,7 @@ new #[Layout('layouts.app')] class extends Component {
                                 </button>
 
                                 <!-- TOMBOL HAPUS (Sembunyikan untuk Admin) -->
-                                @if($role->name !== 'admin')
+                                @if($role->name !== 'Super Admin')
                                 <button wire:click="confirmDelete({{ $role->id }})" class="text-theme-muted hover:text-red-500 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 border border-transparent hover:border-red-200 dark:hover:border-red-500/20" title="Hapus Role">
                                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                                 </button>
@@ -264,17 +264,17 @@ new #[Layout('layouts.app')] class extends Component {
             <div class="bg-theme-surface rounded-2xl border border-theme-border shadow-2xl w-full max-w-2xl overflow-hidden">
                 <div class="px-6 py-4 border-b border-theme-border bg-theme-body/30 flex justify-between items-center">
                     <h3 class="text-lg font-bold text-theme-text">Edit Peran & Hak Akses</h3>
-                    @if($selectedRole->name === 'admin')
+                    @if($selectedRole->name === 'Super Admin')
                         <span class="px-2.5 py-1 bg-accent/10 text-accent text-xs font-bold rounded-md">Protected</span>
                     @endif
                 </div>
                 <div class="p-6 space-y-6">
                     <div>
                         <label class="block text-xs font-bold text-theme-muted uppercase tracking-wider mb-2">Nama Peran</label>
-                        <input type="text" wire:model="editRoleName" {{ $selectedRole->name === 'admin' ? 'disabled' : '' }} class="block w-full border border-theme-border bg-theme-body rounded-xl py-2.5 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text disabled:opacity-50 disabled:cursor-not-allowed">
+                        <input type="text" wire:model="editRoleName" {{ $selectedRole->name === 'Super Admin' ? 'disabled' : '' }} class="block w-full border border-theme-border bg-theme-body rounded-xl py-2.5 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text disabled:opacity-50 disabled:cursor-not-allowed">
                         @error('editRoleName') <span class="text-xs text-red-500 font-medium mt-1">{{ $message }}</span> @enderror
-                        @if($selectedRole->name === 'admin')
-                            <p class="text-[10px] text-theme-muted mt-1">Nama role "admin" tidak dapat diubah oleh sistem.</p>
+                        @if($selectedRole->name === 'Super Admin')
+                            <p class="text-[10px] text-theme-muted mt-1">Nama role "Super Admin" tidak dapat diubah oleh sistem.</p>
                         @endif
                     </div>
 
