@@ -88,7 +88,7 @@ new class extends Component {
         @endif
 
         @if(auth()->user()->can('profil-saya'))
-        <x-nav-link-sidebar class="{{ request()->routeIs('profile') ? 'sidebar-active' : '' }}" :href="route('profile')" :active="request()->routeIs('profile')" wire:navigate>
+        <x-nav-link-sidebar class="{{ request()->routeIs('profile.index') ? 'sidebar-active' : '' }}" :href="route('profile.index')" :active="request()->routeIs('profile.index')" wire:navigate>
             <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
             Profil Saya
         </x-nav-link-sidebar>
@@ -125,7 +125,7 @@ new class extends Component {
             @endif
 
             @if(auth()->user()->can('verifikasi-logbook'))
-            <x-nav-link-sidebar class="{{ request()->routeIs('verifikasi.logbook.*') ? 'sidebar-active' : '' }}" :href="route('verifikasi.logbook.index')" :active="request()->routeIs('verifikasi.logbook.*')" wire:navigate>
+            <x-nav-link-sidebar class="{{ request()->routeIs('kinerja.verifikasi.*') ? 'sidebar-active' : '' }}" :href="route('kinerja.verifikasi.index')" :active="request()->routeIs('kinerja.verifikasi.index')" wire:navigate>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Verifikasi Logbook
             </x-nav-link-sidebar>
@@ -175,7 +175,7 @@ new class extends Component {
                 Periode Kinerja
             </x-nav-link-sidebar>
             @endif
-            
+
             @if(auth()->user()->can('master-jabatan'))
             <x-nav-link-sidebar class="{{ request()->routeIs('admin.positions.*') ? 'sidebar-active' : '' }}" :href="route('admin.positions.index')" :active="request()->routeIs('admin.positions.*')" wire:navigate>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>

@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Builder;
+use App\Models\Position;
+use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\DB;
 
 class User extends Authenticatable
 {
@@ -103,5 +106,28 @@ class User extends Authenticatable
         return $query->whereHas('units', function($q) use ($unitIds) {
             $q->whereIn('units.id', $unitIds);
         })->where('users.id', '!=', $atasan->id); // Jangan tampilkan diri sendiri
+    }
+
+    public function syncRolesFromPositions()
+    {
+        // 1. Ambil semua ID jabatan yang sedang dipegang user dari pivot unit_user
+        $positionIds = DB::table('unit_user')
+            ->where('user_id', $this->id)
+            ->pluck('position_id');
+
+        // 2. Ambil nama jabatan dari tabel positions
+        $positionNames = Position::whereIn('id', $positionIds)->pluck('nama_jabatan')->toArray();
+
+        // 3. Cocokkan: Ambil role yang benar-benar ada di database berdasarkan nama jabatan
+        $rolesFromPositions = Role::whereIn('name', $positionNames)->pluck('name')->toArray();
+
+        // 4. Pertahankan role manual (misal: Super Admin, Admin) yang BUKAN berasal dari nama jabatan
+        $allPositionNames = Position::pluck('nama_jabatan')->toArray();
+        $manualRoles = $this->roles()->whereNotIn('name', $allPositionNames)->pluck('name')->toArray();
+
+        // 5. Gabungkan role jabatan & role manual, lalu sinkronisasi (hapus duplikat jika ada)
+        $finalRoles = array_unique(array_merge($rolesFromPositions, $manualRoles));
+        
+        $this->syncRoles($finalRoles);
     }
 }

@@ -37,8 +37,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('dashboard')
         ->middleware('can:dasbor');
 
-    Volt::route('/profile', 'pages.profile')
-        ->name('profile')
+    Volt::route('/profile', 'pages.profile.index')
+        ->name('profile.index')
         ->middleware('can:profil-saya');
 
 
@@ -65,22 +65,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('kinerja')->name('kinerja.')->group(function () {
         
         // Akses logbook harian staf/dosen
-        Volt::route('/logbook', 'pages.logbook.index')
+        Volt::route('/logbook', 'pages.kinerja.logbook.index')
             ->name('logbook.index')
             ->middleware('can:logbook-harian');
+
+        Volt::route('/verifikasi-logbook', 'pages.kinerja.verifikasi.index')
+            ->name('verifikasi.index')
+            ->middleware('can:verifikasi-logbook');
 
         // Team Saya (Dashboard Pantauan Atasan)
         Volt::route('/team', 'pages.kinerja.team.index')
             ->name('team.index')
             ->middleware('can:team-saya');
-    });
-
-    Route::prefix('verifikasi')->name('verifikasi.')->group(function () {
-        
-        // Verifikasi logbook oleh atasan langsung
-        Volt::route('/logbook', 'pages.verifikasi.logbook')
-            ->name('logbook.index')
-            ->middleware('can:verifikasi-logbook');
     });
 
 

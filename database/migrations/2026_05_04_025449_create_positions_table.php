@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('positions', function (Blueprint $table) {
             $table->id();
             $table->string('nama_jabatan'); 
+            $table->foreignId('role_id')->nullable()->constrained('roles')->nullOnDelete();
             $table->integer('level_otoritas'); 
             $table->string('kategori'); 
             $table->timestamps();

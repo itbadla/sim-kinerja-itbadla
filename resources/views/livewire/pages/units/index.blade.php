@@ -146,6 +146,12 @@ new #[Layout('layouts.app')] class extends Component {
             'is_active' => true
         ]);
 
+        // [DIPERBAIKI] Panggil sinkronisasi role otomatis
+        $user = User::find($this->newMemberId);
+        if (method_exists($user, 'syncRolesFromPositions')) {
+            $user->syncRolesFromPositions();
+        }
+
         $this->newMemberId = '';
         $this->newMemberPositionId = '';
         $this->selectedUnitForMembers->load('users');
@@ -154,6 +160,13 @@ new #[Layout('layouts.app')] class extends Component {
     public function detachMember($userId)
     {
         $this->selectedUnitForMembers->users()->detach($userId);
+        
+        // [DIPERBAIKI] Panggil sinkronisasi role otomatis setelah dicabut
+        $user = User::find($userId);
+        if (method_exists($user, 'syncRolesFromPositions')) {
+            $user->syncRolesFromPositions();
+        }
+
         $this->selectedUnitForMembers->load('users');
     }
 
@@ -174,13 +187,18 @@ new #[Layout('layouts.app')] class extends Component {
             'children.kepalaUnit', 
             'children.children' => fn($q) => $q->withCount('users'),
             'children.children.kepalaUnit',
-            'children.children.children.kepalaUnit'
+            // Tambahkan relasi Tingkat 4
+            'children.children.children' => fn($q) => $q->withCount('users'),
+            'children.children.children.kepalaUnit',
+            // Tambahkan relasi Tingkat 5
+            'children.children.children.children' => fn($q) => $q->withCount('users'),
+            'children.children.children.children.kepalaUnit',
         ]);
 
         if ($this->search) {
             $units = $query->where('nama_unit', 'like', '%' . $this->search . '%')
-                          ->orWhere('kode_unit', 'like', '%' . $this->search . '%')
-                          ->get();
+                           ->orWhere('kode_unit', 'like', '%' . $this->search . '%')
+                           ->get();
         } else {
             $units = $query->whereNull('parent_id')->orderBy('nama_unit')->get();
         }
@@ -298,14 +316,67 @@ new #[Layout('layouts.app')] class extends Component {
                                             <div class="flex items-center gap-2">
                                                 <button wire:click="openManageMembers({{ $gc->id }})" class="text-[10px] font-semibold text-primary hover:underline">{{ $gc->users_count }} Staf</button>
                                                 <div class="opacity-0 group-hover/mini:opacity-100 transition-opacity flex items-center">
+                                                    <button wire:click="openCreateModal({{ $gc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
                                                     <button wire:click="openEditModal({{ $gc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
                                                     <button wire:click="confirmDelete({{ $gc->id }})" class="p-1 text-theme-muted hover:text-red-500"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {{-- Nested Cicit (Level 4) --}}
+                                        @if($gc->children->count() > 0)
+                                            <div class="pl-4 md:pl-8 mt-1 space-y-2 border-l-2 border-theme-border/40">
+                                                @foreach($gc->children as $ggc)
+                                                    <div wire:key="ggc-{{ $ggc->id }}" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-theme-surface/70 rounded-lg border border-theme-border/40 group/micro hover:bg-theme-body/30">
+                                                        <div class="flex items-center gap-2">
+                                                            <div class="w-1 h-1 rounded-full bg-primary/30 group-hover/micro:bg-primary transition-colors"></div>
+                                                            <div>
+                                                                <h6 class="text-[11px] font-bold text-theme-text uppercase">{{ $ggc->nama_unit }}</h6>
+                                                                <p class="text-[9px] text-theme-muted">{{ $ggc->kode_unit }} • Pimpinan: {{ $ggc->kepalaUnit->name ?? '-' }}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div class="flex items-center gap-2">
+                                                            <button wire:click="openManageMembers({{ $ggc->id }})" class="text-[9px] font-semibold text-primary hover:underline">{{ $ggc->users_count }} Staf</button>
+                                                            <div class="opacity-0 group-hover/micro:opacity-100 transition-opacity flex items-center">
+                                                                <button wire:click="openCreateModal({{ $ggc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
+                                                                <button wire:click="openEditModal({{ $ggc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                                                                <button wire:click="confirmDelete({{ $ggc->id }})" class="p-1 text-theme-muted hover:text-red-500"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {{-- Nested Buyut (Level 5) --}}
+                                                    @if($ggc->children->count() > 0)
+                                                        <div class="pl-4 md:pl-8 mt-1 space-y-1.5 border-l-2 border-theme-border/30">
+                                                            @foreach($ggc->children as $gggc)
+                                                                <div wire:key="gggc-{{ $gggc->id }}" class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2 bg-theme-surface/50 rounded-lg border border-theme-border/30 group/nano hover:bg-theme-body/20">
+                                                                    <div class="flex items-center gap-2">
+                                                                        <div class="w-0.5 h-0.5 rounded-full bg-primary/20 group-hover/nano:bg-primary transition-colors"></div>
+                                                                        <div>
+                                                                            <h6 class="text-[10px] font-bold text-theme-text uppercase">{{ $gggc->nama_unit }}</h6>
+                                                                            <p class="text-[8px] text-theme-muted">{{ $gggc->kode_unit }}</p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="flex items-center gap-1.5">
+                                                                        <button wire:click="openManageMembers({{ $gggc->id }})" class="text-[8px] font-semibold text-primary hover:underline">{{ $gggc->users_count }} Staf</button>
+                                                                        <div class="opacity-0 group-hover/nano:opacity-100 transition-opacity flex items-center">
+                                                                            <button wire:click="openEditModal({{ $gggc->id }})" class="p-0.5 text-theme-muted hover:text-primary"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
+                                                                            <button wire:click="confirmDelete({{ $gggc->id }})" class="p-0.5 text-theme-muted hover:text-red-500"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            @endforeach
+                                                        </div>
+                                                    @endif
+
+                                                @endforeach
+                                            </div>
+                                        @endif
+
                                     @endforeach
                                 </div>
                             @endif
+
                         @endforeach
                     </div>
                 @endif

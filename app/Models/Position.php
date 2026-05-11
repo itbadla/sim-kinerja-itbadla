@@ -11,7 +11,8 @@ class Position extends Model
     protected $fillable = [
         'nama_jabatan', 
         'level_otoritas', 
-        'kategori'
+        'kategori',
+        'role_id'
     ];
 
     /**
@@ -23,5 +24,10 @@ class Position extends Model
         return $this->belongsToMany(User::class, 'unit_user')
             ->withPivot('unit_id', 'is_active')
             ->withTimestamps();
+    }
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class, 'role_id');
     }
 }

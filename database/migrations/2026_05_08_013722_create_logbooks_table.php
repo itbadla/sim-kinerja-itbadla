@@ -15,9 +15,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('unit_id')->nullable()->constrained('units')->nullOnDelete();
-            
             // Tautkan ke Proker jika logbook ini adalah progres pengerjaan proker
             $table->foreignId('work_program_id')->nullable()->constrained('work_programs')->nullOnDelete();
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
+
             
             $table->date('tanggal');
             $table->time('jam_mulai');

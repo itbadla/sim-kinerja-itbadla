@@ -24,7 +24,7 @@ new #[Layout('layouts.app')] class extends Component {
     public $newPassword = '';
     public $newRoles = [];
     public $newUnitId = '';
-    public $newPositionId = ''; // PERBAIKAN: Menggunakan ID Jabatan
+    public $newPositionId = ''; 
     public $headedUnitIds = []; 
 
     // ==========================================
@@ -37,7 +37,7 @@ new #[Layout('layouts.app')] class extends Component {
     public $editPassword = ''; 
     public $editRoles = [];
     public $editUnitId = '';
-    public $editPositionId = ''; // PERBAIKAN: Menggunakan ID Jabatan
+    public $editPositionId = '';
 
     // ==========================================
     // STATE: MODAL HAPUS (DELETE)
@@ -67,7 +67,7 @@ new #[Layout('layouts.app')] class extends Component {
             'newEmail' => 'required|email|unique:users,email',
             'newPassword' => 'required|min:8',
             'newUnitId' => 'required|exists:units,id',
-            'newPositionId' => 'required|exists:positions,id', // PERBAIKAN VALIDASI
+            'newPositionId' => 'required|exists:positions,id',
             'headedUnitIds' => 'nullable|array',
             'headedUnitIds.*' => 'exists:units,id',
         ]);
@@ -80,23 +80,30 @@ new #[Layout('layouts.app')] class extends Component {
                 'email_verified_at' => now(),
             ]);
 
+            // 1. Tetapkan role manual dari UI (misal: Super Admin)
             if (!empty($this->newRoles)) {
                 $user->assignRole($this->newRoles);
             }
 
-            // Simpan ke Pivot Unit (Homebase)
+            // 2. Simpan ke Pivot Unit (Homebase)
             $user->units()->attach($this->newUnitId, [
-                'position_id' => $this->newPositionId, // MENGGUNAKAN POSITION_ID
+                'position_id' => $this->newPositionId,
                 'is_active' => true
             ]);
 
+            // 3. [OTOMATISASI] Sinkronisasi Role dari Jabatan
+            if (method_exists($user, 'syncRolesFromPositions')) {
+                $user->syncRolesFromPositions();
+            }
+
+            // 4. Tetapkan status Kepala Unit jika ada
             if (!empty($this->headedUnitIds)) {
                 Unit::whereIn('id', $this->headedUnitIds)->update(['kepala_unit_id' => $user->id]);
             }
         });
 
         $this->isCreateModalOpen = false;
-        session()->flash('message', 'Pengguna berhasil ditambahkan.');
+        session()->flash('message', 'Pengguna berhasil ditambahkan beserta hak akses otomatisnya.');
     }
 
     // ==========================================
@@ -135,6 +142,7 @@ new #[Layout('layouts.app')] class extends Component {
         ]);
 
         DB::transaction(function () {
+            // 1. Update data dasar user
             $this->selectedUser->update([
                 'name' => $this->editName,
                 'email' => $this->editEmail,
@@ -144,9 +152,10 @@ new #[Layout('layouts.app')] class extends Component {
                 $this->selectedUser->update(['password' => bcrypt($this->editPassword)]);
             }
             
+            // 2. Sinkronisasi role manual dari Checkbox UI
             $this->selectedUser->syncRoles($this->editRoles);
             
-            // Sync Unit Utama
+            // 3. Sync Unit Utama & Jabatan
             $this->selectedUser->units()->sync([
                 $this->editUnitId => [
                     'position_id' => $this->editPositionId,
@@ -154,7 +163,12 @@ new #[Layout('layouts.app')] class extends Component {
                 ]
             ]);
 
-            // Sync Kepala Unit
+            // 4. [OTOMATISASI] Panggil sync agar role jabatan terbaru diterapkan & menggantikan jika ada perubahan
+            if (method_exists($this->selectedUser, 'syncRolesFromPositions')) {
+                $this->selectedUser->syncRolesFromPositions();
+            }
+
+            // 5. Sync Kepala Unit
             Unit::where('kepala_unit_id', $this->selectedUser->id)->update(['kepala_unit_id' => null]);
             if (!empty($this->headedUnitIds)) {
                 Unit::whereIn('id', $this->headedUnitIds)->update(['kepala_unit_id' => $this->selectedUser->id]);
@@ -162,7 +176,7 @@ new #[Layout('layouts.app')] class extends Component {
         });
 
         $this->isEditModalOpen = false;
-        session()->flash('message', 'Data pengguna berhasil diperbarui.');
+        session()->flash('message', 'Data dan hak akses pengguna berhasil diperbarui.');
     }
 
     public function confirmDelete($id)
@@ -202,8 +216,8 @@ new #[Layout('layouts.app')] class extends Component {
                 ->paginate(10),
             'availableRoles' => Role::all(), 
             'availableUnits' => Unit::orderBy('nama_unit')->get(),
-            'availablePositions' => Position::orderBy('level_otoritas')->get(), // MENGAMBIL DATA JABATAN
-            'positionsMap' => Position::pluck('nama_jabatan', 'id'), // Helper untuk tampilan view
+            'availablePositions' => Position::orderBy('level_otoritas')->get(),
+            'positionsMap' => Position::pluck('nama_jabatan', 'id'),
         ];
     }
 }; ?>
@@ -384,7 +398,10 @@ new #[Layout('layouts.app')] class extends Component {
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold text-theme-text mb-3 uppercase tracking-wider">Peran Sistem</h4>
+                        <div class="mb-3">
+                            <h4 class="text-xs font-bold text-theme-text uppercase tracking-wider">Peran Sistem Tambahan</h4>
+                            <p class="text-[10px] text-theme-muted mt-0.5">Pilih role manual (misal: Super Admin). Role dari Jabatan akan otomatis diberikan oleh sistem.</p>
+                        </div>
                         <div class="flex flex-wrap gap-2">
                             @foreach($availableRoles as $role)
                                 <label class="flex items-center gap-2 px-3 py-2 border border-theme-border rounded-xl cursor-pointer hover:bg-theme-body/50">
@@ -465,12 +482,27 @@ new #[Layout('layouts.app')] class extends Component {
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold text-theme-text mb-3 uppercase tracking-wider">Peran Sistem</h4>
+                        <div class="mb-3">
+                            <h4 class="text-xs font-bold text-theme-text uppercase tracking-wider">Peran Sistem Tambahan</h4>
+                            <p class="text-[10px] text-theme-muted mt-0.5">Role bawaan dari Jabatan mungkin terlihat tercentang di sini, namun jika dihapus centangnya, sistem akan mengembalikannya secara otomatis.</p>
+                        </div>
                         <div class="flex flex-wrap gap-2">
                             @foreach($availableRoles as $role)
                                 <label class="flex items-center gap-2 px-3 py-2 border border-theme-border rounded-xl cursor-pointer hover:bg-theme-body/50">
                                     <input type="checkbox" wire:model="editRoles" value="{{ $role->name }}" class="rounded text-primary focus:ring-primary border-theme-border">
                                     <span class="text-[10px] font-bold uppercase text-theme-text">{{ $role->name }}</span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-xs font-bold text-theme-text mb-3 uppercase tracking-wider">Amanah Struktural (Kepala)</h4>
+                        <div class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 bg-theme-body/20 rounded-xl border border-theme-border">
+                            @foreach($availableUnits as $unit)
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" wire:model="headedUnitIds" value="{{ $unit->id }}" class="rounded text-primary focus:ring-primary border-theme-border">
+                                    <span class="text-[10px] text-theme-text font-medium">{{ $unit->kode_unit ?? $unit->nama_unit }}</span>
                                 </label>
                             @endforeach
                         </div>

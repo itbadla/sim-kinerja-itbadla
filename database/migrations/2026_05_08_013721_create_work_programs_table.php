@@ -15,10 +15,10 @@ return new class extends Migration
         Schema::create('work_programs', function (Blueprint $table) {
             $table->id();
             $table->foreignId('unit_id')->constrained('units')->cascadeOnDelete();
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
             
             $table->string('nama_proker');
             $table->text('deskripsi')->nullable();
-            $table->year('tahun_anggaran');
             $table->decimal('anggaran_rencana', 15, 2);
             
             // Status approval dari Rapat Kerja

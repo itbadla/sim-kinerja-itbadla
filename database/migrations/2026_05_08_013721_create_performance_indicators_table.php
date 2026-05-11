@@ -13,10 +13,14 @@ return new class extends Migration
     {
         Schema::create('performance_indicators', function (Blueprint $table) {
             $table->id();
-            $table->string('kode_indikator', 20)->unique(); // Contoh: IKU-1, IKT-01
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
+            $table->string('kode_indikator', 20); 
             $table->text('nama_indikator');
-            $table->enum('kategori', ['IKU', 'IKT']); // Penyatuan tabel
+            $table->enum('kategori', ['IKU', 'IKT']); 
             $table->timestamps();
+
+            // TAMBAHKAN BARIS INI: Agar kode unik per periode, bukan global
+            $table->unique(['periode_id', 'kode_indikator']);
         });
     }
 

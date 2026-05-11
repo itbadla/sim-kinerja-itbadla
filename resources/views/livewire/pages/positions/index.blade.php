@@ -3,7 +3,9 @@
 use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use App\Models\Position;
+use Spatie\Permission\Models\Role;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 
 new #[Layout('layouts.app')] class extends Component {
     public $search = '';
@@ -58,10 +60,17 @@ new #[Layout('layouts.app')] class extends Component {
             'kategori' => 'required|string|in:Pimpinan,Struktural,Akademik,Administratif',
         ]);
 
-        Position::create($validated);
+        DB::transaction(function () use ($validated) {
+            // 1. Buat atau cari Role di tabel Spatie
+            $role = Role::firstOrCreate(['name' => $validated['nama_jabatan']]);
+
+            // 2. Buat Jabatan Baru dan simpan role_id-nya
+            $validated['role_id'] = $role->id;
+            Position::create($validated);
+        });
 
         $this->isCreateModalOpen = false;
-        session()->flash('message', 'Jabatan berhasil ditambahkan.');
+        session()->flash('message', 'Jabatan berhasil ditambahkan dan Role otomatis dibuat.');
     }
 
     public function update()
@@ -72,11 +81,34 @@ new #[Layout('layouts.app')] class extends Component {
             'kategori' => 'required|string|in:Pimpinan,Struktural,Akademik,Administratif',
         ]);
 
-        $position = Position::findOrFail($this->positionId);
-        $position->update($validated);
+        DB::transaction(function () use ($validated) {
+            $position = Position::findOrFail($this->positionId);
+            $oldName = $position->nama_jabatan;
+            
+            // 1. [SINKRONISASI] Cek dan Update Role Spatie
+            if ($position->role_id) {
+                $role = Role::find($position->role_id);
+                if ($role) {
+                    if ($role->name !== 'Super Admin' && $oldName !== $validated['nama_jabatan']) {
+                        $role->update(['name' => $validated['nama_jabatan']]);
+                    }
+                } else {
+                    // Fallback: Jika role di Spatie tidak sengaja terhapus manual, buat ulang
+                    $role = Role::firstOrCreate(['name' => $validated['nama_jabatan']]);
+                    $validated['role_id'] = $role->id;
+                }
+            } else {
+                // Jika jabatan lama belum punya role_id, buat dan tautkan sekarang
+                $role = Role::firstOrCreate(['name' => $validated['nama_jabatan']]);
+                $validated['role_id'] = $role->id;
+            }
+
+            // 2. Update Jabatan
+            $position->update($validated);
+        });
 
         $this->isEditModalOpen = false;
-        session()->flash('message', 'Data jabatan berhasil diperbarui.');
+        session()->flash('message', 'Data jabatan & Role berhasil diperbarui.');
     }
 
     public function confirmDelete($id)
@@ -88,9 +120,10 @@ new #[Layout('layouts.app')] class extends Component {
     public function destroy()
     {
         $position = Position::findOrFail($this->positionId);
+        $roleId = $position->role_id;
 
         // Cek apakah jabatan ini masih digunakan di unit_user
-        $usedCount = \Illuminate\Support\Facades\DB::table('unit_user')
+        $usedCount = DB::table('unit_user')
             ->where('position_id', $this->positionId)
             ->count();
 
@@ -100,9 +133,43 @@ new #[Layout('layouts.app')] class extends Component {
             return;
         }
 
-        $position->delete();
+        DB::transaction(function () use ($position, $roleId) {
+            // 1. Hapus Jabatan
+            $position->delete();
+
+            // 2. [SINKRONISASI] Hapus Role-nya BILA tidak ada user yang memakainya
+            if ($roleId) {
+                $role = Role::find($roleId);
+                if ($role && $role->name !== 'Super Admin') {
+                    $usersWithRole = DB::table('model_has_roles')->where('role_id', $role->id)->count();
+                    if ($usersWithRole === 0) {
+                        $role->delete();
+                    }
+                }
+            }
+        });
+
         $this->isDeleteModalOpen = false;
-        session()->flash('message', 'Jabatan berhasil dihapus.');
+        session()->flash('message', 'Jabatan berhasil dihapus dan Role dibersihkan.');
+    }
+
+    // Fungsi pintar untuk mensinkronkan semua jabatan lama secara otomatis
+    public function syncAllRoles()
+    {
+        $unsyncedPositions = Position::whereNull('role_id')->get();
+        $count = 0;
+
+        DB::transaction(function () use ($unsyncedPositions, &$count) {
+            foreach ($unsyncedPositions as $position) {
+                $role = Role::firstOrCreate(['name' => $position->nama_jabatan]);
+                $position->update(['role_id' => $role->id]);
+                $count++;
+            }
+        });
+
+        if ($count > 0) {
+            session()->flash('message', "Berhasil mensinkronkan {$count} jabatan dengan Peran (Spatie Roles).");
+        }
     }
 
     public function closeModal()
@@ -123,6 +190,7 @@ new #[Layout('layouts.app')] class extends Component {
                 ->orderBy('level_otoritas')
                 ->orderBy('nama_jabatan')
                 ->get(),
+            'unsyncedCount' => Position::whereNull('role_id')->count(), // Menghitung yang belum sinkron
         ];
     }
 }; ?>
@@ -141,15 +209,33 @@ new #[Layout('layouts.app')] class extends Component {
         </button>
     </div>
 
-    {{-- Feedback --}}
+    {{-- ALERT CERDAS: Tombol Sinkronisasi Cepat jika ada data yang belum terikat --}}
+    @if($unsyncedCount > 0)
+        <div class="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-pulse-slow">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-600 shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                </div>
+                <div>
+                    <h4 class="text-sm font-bold">Sinkronisasi Diperlukan</h4>
+                    <p class="text-xs mt-0.5 opacity-90">Ada <span class="font-bold">{{ $unsyncedCount }} jabatan lama</span> yang belum terhubung dengan tabel Peran (Spatie Roles).</p>
+                </div>
+            </div>
+            <button wire:click="syncAllRoles" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-sm transition-all whitespace-nowrap">
+                Sinkronkan Sekarang
+            </button>
+        </div>
+    @endif
+
+    {{-- Feedback Standard --}}
     @if (session()->has('message'))
-        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" x-transition class="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl flex items-center justify-between">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" x-transition class="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl flex items-center justify-between shadow-sm">
             <span class="text-sm font-medium">{{ session('message') }}</span>
             <button @click="show = false" class="text-emerald-500 hover:text-emerald-700"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
         </div>
     @endif
     @if (session()->has('error'))
-        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)" x-transition class="p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-center justify-between">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 5000)" x-transition class="p-4 bg-red-50 border border-red-200 text-red-700 rounded-2xl flex items-center justify-between shadow-sm">
             <span class="text-sm font-medium">{{ session('error') }}</span>
             <button @click="show = false" class="text-red-500 hover:text-red-700"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
         </div>
@@ -225,7 +311,16 @@ new #[Layout('layouts.app')] class extends Component {
                                 </span>
                             </td>
                             <td class="px-6 py-4">
-                                <span class="text-sm font-bold text-theme-text">{{ $position->nama_jabatan }}</span>
+                                <div class="flex items-center">
+                                    <span class="text-sm font-bold text-theme-text">{{ $position->nama_jabatan }}</span>
+                                    
+                                    {{-- Lencana Peringatan jika belum punya Role ID --}}
+                                    @if(!$position->role_id)
+                                        <span class="ml-3 px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[10px] font-bold border border-amber-200" title="Klik tombol Sinkronisasi di atas">
+                                            Belum Sinkron
+                                        </span>
+                                    @endif
+                                </div>
                             </td>
                             <td class="px-6 py-4">
                                 <span class="inline-flex px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border {{ $kategoriBadge }}">
@@ -233,7 +328,7 @@ new #[Layout('layouts.app')] class extends Component {
                                 </span>
                             </td>
                             <td class="px-6 py-4 text-right">
-                                <div class="flex items-center justify-end gap-1 opacity-30 group-hover:opacity-100 transition-opacity">
+                                <div class="flex items-center justify-end gap-1 opacity-40 group-hover:opacity-100 transition-opacity">
                                     <button wire:click="openEditModal({{ $position->id }})" class="text-theme-muted hover:text-primary p-2 rounded-lg hover:bg-theme-body transition-colors" title="Edit">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                                     </button>

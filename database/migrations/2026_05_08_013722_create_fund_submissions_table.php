@@ -18,6 +18,7 @@ return new class extends Migration
             
             // Link ke Proker (Wajib agar terukur)
             $table->foreignId('work_program_id')->nullable()->constrained('work_programs')->nullOnDelete();
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
             
             $table->enum('tipe_pengajuan', ['pribadi', 'lembaga'])->default('pribadi');
             $table->decimal('nominal', 15, 2);
