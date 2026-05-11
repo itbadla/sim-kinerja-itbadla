@@ -105,6 +105,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->middleware('can:verifikasi-keuangan');
     });
 
+    Volt::route('/periode', 'pages.periode.index')
+        ->name('periode.index')
+        ->middleware('can:kelola-master');  
+
 
     // ==========================================
     // ADMINISTRATOR AREA (RBAC & MASTER DATA)

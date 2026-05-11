@@ -6,6 +6,7 @@ use Livewire\WithPagination;
 use Livewire\WithFileUploads;
 use App\Models\FundSubmission;
 use App\Models\Unit;
+use App\Models\Periode;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 
@@ -15,6 +16,7 @@ new #[Layout('layouts.app')] class extends Component {
     public $search = '';
     public $filterStatus = '';
     public $filterTipe = '';
+    public $selectedPeriodeId = ''; // State untuk Dropdown Periode
 
     // ==========================================
     // STATE: MODAL FORM
@@ -49,11 +51,18 @@ new #[Layout('layouts.app')] class extends Component {
         $user = Auth::user();
         $this->headedUnits = Unit::where('kepala_unit_id', $user->id)->get();
         $this->isKepalaUnit = $this->headedUnits->count() > 0;
+
+        // Set dropdown ke periode yang aktif saat ini secara default
+        $currentPeriode = Periode::where('is_current', true)->first();
+        if ($currentPeriode) {
+            $this->selectedPeriodeId = $currentPeriode->id;
+        }
     }
 
     public function updatingSearch() { $this->resetPage(); }
     public function updatingFilterStatus() { $this->resetPage(); }
     public function updatingFilterTipe() { $this->resetPage(); }
+    public function updatingSelectedPeriodeId() { $this->resetPage(); }
 
     // ==========================================
     // FUNGSI: BUKA MODAL FORM
@@ -106,6 +115,14 @@ new #[Layout('layouts.app')] class extends Component {
     // ==========================================
     public function saveSubmission()
     {
+        $periode = Periode::find($this->selectedPeriodeId);
+
+        // Keamanan: Pastikan periode tersedia dan belum ditutup
+        if (!$periode || $periode->status === 'closed') {
+            session()->flash('error', 'Gagal menyimpan! Periode ini sudah dikunci atau tidak tersedia.');
+            return;
+        }
+
         $rules = [
             'tipe_pengajuan' => 'required|in:pribadi,lembaga',
             'nominal' => 'required|numeric|min:1000',
@@ -131,6 +148,7 @@ new #[Layout('layouts.app')] class extends Component {
         $data = [
             'user_id' => Auth::id(),
             'unit_id' => $finalUnitId,
+            'periode_id' => $periode->id, // INJEKSI PERIODE BERDASARKAN DROPDOWN
             'tipe_pengajuan' => $this->tipe_pengajuan,
             'nominal' => $this->nominal,
             'keperluan' => $this->keperluan,
@@ -177,6 +195,7 @@ new #[Layout('layouts.app')] class extends Component {
         
         $this->isDeleteModalOpen = false;
         $this->submissionToDeleteId = null;
+        session()->flash('success', 'Pengajuan berhasil dihapus/dibatalkan.');
     }
 
     // ==========================================
@@ -184,58 +203,112 @@ new #[Layout('layouts.app')] class extends Component {
     // ==========================================
     public function with(): array
     {
-        $query = FundSubmission::with(['unit'])
-            ->where('user_id', Auth::id());
+        $allPeriodes = Periode::orderBy('tanggal_mulai', 'desc')->get();
+        $selectedPeriode = Periode::find($this->selectedPeriodeId);
 
-        // Filter Pencarian
-        if ($this->search) {
-            $query->where('keperluan', 'like', '%' . $this->search . '%');
-        }
+        $submissions = collect();
 
-        // Filter Status
-        if ($this->filterStatus) {
-            $query->where('status', $this->filterStatus);
-        }
+        // Hanya load data jika ada periode terpilih
+        if ($selectedPeriode) {
+            $query = FundSubmission::with(['unit', 'periode'])
+                ->where('user_id', Auth::id())
+                ->where('periode_id', $selectedPeriode->id);
 
-        // Filter Tipe
-        if ($this->filterTipe) {
-            $query->where('tipe_pengajuan', $this->filterTipe);
+            // Filter Pencarian
+            if ($this->search) {
+                $query->where('keperluan', 'like', '%' . $this->search . '%');
+            }
+
+            // Filter Status
+            if ($this->filterStatus) {
+                $query->where('status', $this->filterStatus);
+            }
+
+            // Filter Tipe
+            if ($this->filterTipe) {
+                $query->where('tipe_pengajuan', $this->filterTipe);
+            }
+
+            $submissions = $query->latest()->paginate(10);
         }
 
         return [
-            'submissions' => $query->latest()->paginate(10),
+            'submissions' => $submissions,
+            'allPeriodes' => $allPeriodes,
+            'selectedPeriode' => $selectedPeriode,
         ];
     }
 }; ?>
 
 <div class="space-y-6 relative">
-    <!-- Header Halaman -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
+    <!-- Header Halaman & Dropdown Periode -->
+    <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+        <div class="flex-1">
             <h1 class="text-2xl font-extrabold text-theme-text tracking-tight">Pengajuan Dana</h1>
             <p class="text-sm text-theme-muted mt-1">Ajukan anggaran untuk kebutuhan operasional pribadi maupun lembaga.</p>
         </div>
         
-        <button wire:click="openModal" class="bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-            Buat Pengajuan
-        </button>
+        <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+            <!-- Dropdown Filter Periode -->
+            <div class="w-full sm:w-64">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Pilih Periode Kinerja</label>
+                <select wire:model.live="selectedPeriodeId" class="w-full border-gray-300 bg-gray-50 rounded-xl text-sm font-bold text-gray-900 focus:ring-primary focus:border-primary shadow-sm cursor-pointer">
+                    <option value="">-- Pilih Periode --</option>
+                    @foreach($allPeriodes as $p)
+                        <option value="{{ $p->id }}">
+                            {{ $p->nama_periode }} 
+                            @if($p->is_current) (Aktif) @endif
+                            @if($p->status === 'closed') (Arsip) @endif
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div class="w-full sm:w-auto">
+                <label class="block text-[10px] text-transparent hidden sm:block mb-1">-</label>
+                <button wire:click="openModal" 
+                        @if(!$selectedPeriode || $selectedPeriode->status === 'closed') disabled @endif 
+                        class="w-full bg-primary hover:bg-primary-hover disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center justify-center gap-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    Buat Pengajuan
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- Alert Sukses/Error -->
     @if (session()->has('error'))
-        <div class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 4000)" class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm">
             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             {{ session('error') }}
         </div>
     @endif
     @if (session()->has('success'))
-        <div class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm">
             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             {{ session('success') }}
         </div>
     @endif
 
+    <!-- Warning Jika Belum Pilih Periode / Terkunci -->
+    @if(!$selectedPeriode)
+        <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-4 text-sm font-medium flex items-center gap-3 shadow-sm">
+            <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            Sistem terkunci. Belum ada periode yang dipilih atau periode aktif belum tersedia. Harap hubungi Administrator.
+        </div>
+    @elseif($selectedPeriode->status === 'closed')
+        <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl shadow-sm">
+            <div class="flex items-center">
+                <svg class="h-6 w-6 text-amber-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                <div>
+                    <h3 class="text-sm font-bold text-amber-800">Periode {{ $selectedPeriode->nama_periode }} Ditutup</h3>
+                    <p class="text-sm text-amber-700 mt-1">Periode ini telah diarsipkan. Anda hanya dapat melihat data pengajuan tanpa bisa menambah atau mengubahnya.</p>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if($selectedPeriode)
     <!-- Kotak Filter & Pencarian -->
     <div class="bg-theme-surface p-4 rounded-2xl border border-theme-border shadow-sm flex flex-col md:flex-row items-center gap-3">
         <!-- Filter Tipe Pengajuan (Jika Kepala Unit) -->
@@ -335,7 +408,6 @@ new #[Layout('layouts.app')] class extends Component {
                                 @endif
                                 
                                 @if($item->catatan_verifikator)
-                                    <!-- TOMBOL DIPERBAIKI: Memanggil Modal saat diklik -->
                                     <button wire:click="openCatatanModal({{ $item->id }})" class="mt-2 text-[10px] flex items-center justify-center w-full gap-1 text-theme-muted hover:text-primary transition-colors hover:underline">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
                                         Lihat Catatan
@@ -345,7 +417,7 @@ new #[Layout('layouts.app')] class extends Component {
 
                             <!-- Aksi -->
                             <td class="px-6 py-4 align-top text-right">
-                                @if($item->status === 'pending')
+                                @if($item->status === 'pending' && $selectedPeriode->status !== 'closed')
                                     <div class="flex items-center justify-end gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button wire:click="openModal({{ $item->id }})" class="text-theme-muted hover:text-primary transition-colors p-2 rounded-lg hover:bg-theme-body border border-transparent hover:border-theme-border" title="Edit">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
@@ -356,7 +428,7 @@ new #[Layout('layouts.app')] class extends Component {
                                     </div>
                                 @else
                                     <div class="flex justify-end pr-2">
-                                        <svg class="w-5 h-5 text-theme-muted opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Terkunci. Sudah diproses."><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                        <svg class="w-5 h-5 text-theme-muted opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Terkunci. Sudah diproses atau periode berakhir."><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                     </div>
                                 @endif
                             </td>
@@ -368,7 +440,7 @@ new #[Layout('layouts.app')] class extends Component {
                                     <svg class="w-10 h-10 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                                 </div>
                                 <h4 class="text-base font-bold text-theme-text uppercase tracking-tight">Belum Ada Pengajuan</h4>
-                                <p class="text-sm text-theme-muted mt-1">Anda belum memiliki riwayat pengajuan dana.</p>
+                                <p class="text-sm text-theme-muted mt-1">Anda belum memiliki riwayat pengajuan dana pada periode ini.</p>
                             </td>
                         </tr>
                     @endforelse
@@ -383,6 +455,7 @@ new #[Layout('layouts.app')] class extends Component {
             </div>
         @endif
     </div>
+    @endif
 
     <!-- ========================================== -->
     <!-- MODAL FORM (BUAT / EDIT) -->
@@ -392,7 +465,10 @@ new #[Layout('layouts.app')] class extends Component {
             <div class="bg-theme-surface rounded-2xl border border-theme-border shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh] overflow-hidden" onclick="event.stopPropagation()">
                 <!-- Header Sticky -->
                 <div class="px-6 py-4 border-b border-theme-border bg-theme-body/50 flex justify-between items-center z-10 shrink-0">
-                    <h3 class="text-lg font-bold text-theme-text">{{ $submissionId ? 'Edit Pengajuan Dana' : 'Buat Pengajuan Baru' }}</h3>
+                    <h3 class="text-lg font-bold text-theme-text">
+                        {{ $submissionId ? 'Edit Pengajuan Dana' : 'Buat Pengajuan Baru' }}
+                        <span class="block text-xs font-normal text-gray-500 mt-0.5">Periode: {{ $selectedPeriode->nama_periode }}</span>
+                    </h3>
                     <button type="button" wire:click="$set('isModalOpen', false)" class="text-theme-muted hover:text-red-500 transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>

@@ -168,6 +168,13 @@ new class extends Component {
         <!-- ================= GRUP: RBAC & MASTER (ADMIN) ================= -->
         @if(auth()->check() && auth()->user()->hasRole('Super Admin'))
             <p class="px-3 text-[10px] font-bold text-theme-muted uppercase tracking-[0.2em] mt-8 mb-4">Master Data & Admin</p>
+            {{-- MENU PERIODE KINERJA --}}
+            @if(auth()->user()->can('kelola-master'))
+            <x-nav-link-sidebar class="{{ request()->routeIs('periode.*') ? 'sidebar-active' : '' }}" :href="route('periode.index')" :active="request()->routeIs('periode.*')" wire:navigate>
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                Periode Kinerja
+            </x-nav-link-sidebar>
+            @endif
             
             @if(auth()->user()->can('master-jabatan'))
             <x-nav-link-sidebar class="{{ request()->routeIs('admin.positions.*') ? 'sidebar-active' : '' }}" :href="route('admin.positions.index')" :active="request()->routeIs('admin.positions.*')" wire:navigate>

@@ -5,6 +5,7 @@ use Livewire\Attributes\Layout;
 use Livewire\WithPagination;
 use App\Models\WorkProgram;
 use App\Models\Unit;
+use App\Models\Periode;
 use App\Models\PerformanceIndicator;
 use Illuminate\Support\Facades\Auth;
 
@@ -12,7 +13,7 @@ new #[Layout('layouts.app')] class extends Component {
     use WithPagination;
 
     public $search = '';
-    public $filterTahun = '';
+    public $filterPeriodeId = ''; // Menggunakan ID Periode
     
     // Form States
     public $isModalOpen = false;
@@ -20,7 +21,7 @@ new #[Layout('layouts.app')] class extends Component {
     public $unit_id;
     public $nama_proker = '';
     public $deskripsi = '';
-    public $tahun_anggaran;
+    public $periode_id = ''; 
     public $anggaran_rencana = 0;
     
     // Indicators mapping
@@ -28,15 +29,17 @@ new #[Layout('layouts.app')] class extends Component {
     
     // Data lists
     public $managedUnits = [];
-    public $availableIndicators = [];
+    public $availablePeriodes = [];
 
     public function mount()
     {
-        $this->filterTahun = date('Y');
-        $this->tahun_anggaran = date('Y');
+        // Set Default Periode ke yang sedang aktif
+        $currentPeriode = Periode::where('is_current', true)->first();
+        if ($currentPeriode) {
+            $this->filterPeriodeId = $currentPeriode->id;
+            $this->periode_id = $currentPeriode->id;
+        }
         
-        // Pimpinan unit (Dekan, Kaprodi, Kepala Lembaga dll) can manage proker for their unit
-        // Or if they are super admin they could potentially see all, but let's stick to unit-based
         if (Auth::user()->hasRole('Super Admin')) {
             $this->managedUnits = Unit::all();
         } else {
@@ -47,17 +50,20 @@ new #[Layout('layouts.app')] class extends Component {
             $this->unit_id = $this->managedUnits->first()->id;
         }
         
-        $this->availableIndicators = PerformanceIndicator::all();
+        $this->availablePeriodes = Periode::orderBy('tanggal_mulai', 'desc')->get();
     }
 
     public function updatingSearch() { $this->resetPage(); }
-    public function updatingFilterTahun() { $this->resetPage(); }
+    public function updatingFilterPeriodeId() { $this->resetPage(); }
 
     public function openModal($id = null)
     {
         $this->resetValidation();
         $this->reset(['nama_proker', 'deskripsi', 'anggaran_rencana', 'selectedIndicators']);
-        $this->tahun_anggaran = date('Y');
+        
+        $currentPeriode = Periode::where('is_current', true)->first();
+        $this->periode_id = $currentPeriode ? $currentPeriode->id : '';
+
         if($this->managedUnits->count() > 0) {
             $this->unit_id = $this->managedUnits->first()->id;
         }
@@ -74,7 +80,7 @@ new #[Layout('layouts.app')] class extends Component {
             $this->unit_id = $proker->unit_id;
             $this->nama_proker = $proker->nama_proker;
             $this->deskripsi = $proker->deskripsi;
-            $this->tahun_anggaran = $proker->tahun_anggaran;
+            $this->periode_id = $proker->periode_id;
             $this->anggaran_rencana = $proker->anggaran_rencana;
             
             foreach ($proker->indicators as $ind) {
@@ -111,7 +117,7 @@ new #[Layout('layouts.app')] class extends Component {
             'unit_id' => 'required|exists:units,id',
             'nama_proker' => 'required|string|max:255',
             'deskripsi' => 'nullable|string',
-            'tahun_anggaran' => 'required|digits:4',
+            'periode_id' => 'required|exists:periodes,id',
             'anggaran_rencana' => 'required|numeric|min:0',
             'selectedIndicators.*.id' => 'required|exists:performance_indicators,id',
             'selectedIndicators.*.target_angka' => 'required|numeric|min:0',
@@ -126,7 +132,7 @@ new #[Layout('layouts.app')] class extends Component {
                 'unit_id' => $this->unit_id,
                 'nama_proker' => $this->nama_proker,
                 'deskripsi' => $this->deskripsi,
-                'tahun_anggaran' => $this->tahun_anggaran,
+                'periode_id' => $this->periode_id,
                 'anggaran_rencana' => $this->anggaran_rencana,
                 'status' => $status
             ]
@@ -172,24 +178,36 @@ new #[Layout('layouts.app')] class extends Component {
 
     public function with(): array
     {
-        $query = WorkProgram::with('unit', 'indicators')
+        $query = WorkProgram::with(['unit', 'indicators', 'periode'])
             ->whereIn('unit_id', $this->managedUnits->pluck('id'));
 
-        if ($this->filterTahun) {
-            $query->where('tahun_anggaran', $this->filterTahun);
+        if ($this->filterPeriodeId) {
+            $query->where('periode_id', $this->filterPeriodeId);
         }
 
         if ($this->search) {
             $query->where('nama_proker', 'like', '%' . $this->search . '%');
         }
 
+        // Teks untuk Judul Pagu Anggaran
+        $selectedPeriodeName = 'Semua Periode';
+        if ($this->filterPeriodeId) {
+            $periode = Periode::find($this->filterPeriodeId);
+            if ($periode) {
+                $selectedPeriodeName = $periode->nama_periode;
+            }
+        }
+
         return [
             'prokers' => $query->orderBy('created_at', 'desc')->paginate(10),
+            'selectedPeriodeName' => $selectedPeriodeName,
+            // PERBAIKAN: Indikator bersifat Global (Tidak terikat pada periode tertentu)
+            'availableIndicators' => PerformanceIndicator::orderBy('kategori', 'desc')->orderBy('kode_indikator')->get(),
         ];
     }
 }; ?>
 
-<div class="space-y-6">
+<div class="space-y-6 max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
     <!-- Header Section -->
     <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
@@ -210,9 +228,9 @@ new #[Layout('layouts.app')] class extends Component {
     <!-- Stats & Filters -->
     <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
         <!-- Stats -->
-        <div class="md:col-span-4 bg-theme-surface border border-theme-border rounded-2xl p-5 flex items-center justify-between">
+        <div class="md:col-span-4 bg-theme-surface border border-theme-border rounded-2xl p-5 flex items-center justify-between shadow-sm">
             <div>
-                <p class="text-[10px] font-bold text-theme-muted uppercase tracking-widest mb-1">Total Anggaran ({{ $filterTahun ?: 'Semua' }})</p>
+                <p class="text-[10px] font-bold text-theme-muted uppercase tracking-widest mb-1">Total Anggaran ({{ $selectedPeriodeName }})</p>
                 <p class="text-2xl font-black text-primary">
                     Rp {{ number_format($prokers->sum('anggaran_rencana'), 0, ',', '.') }}
                 </p>
@@ -223,14 +241,14 @@ new #[Layout('layouts.app')] class extends Component {
         </div>
 
         <!-- Filters -->
-        <div class="md:col-span-8 bg-theme-surface border border-theme-border rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-3">
-            <div class="w-full sm:w-48">
-                <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1.5">Tahun Anggaran</label>
-                <select wire:model.live="filterTahun" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text font-mono">
-                    <option value="">Semua Tahun</option>
-                    @for($y = date('Y') - 1; $y <= date('Y') + 2; $y++)
-                        <option value="{{ $y }}">{{ $y }}</option>
-                    @endfor
+        <div class="md:col-span-8 bg-theme-surface border border-theme-border rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-3 shadow-sm">
+            <div class="w-full sm:w-64">
+                <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1.5">Filter Periode Kinerja</label>
+                <select wire:model.live="filterPeriodeId" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text font-bold cursor-pointer">
+                    <option value="">-- Semua Periode --</option>
+                    @foreach($availablePeriodes as $p)
+                        <option value="{{ $p->id }}">{{ $p->nama_periode }} @if($p->is_current) (Aktif) @endif</option>
+                    @endforeach
                 </select>
             </div>
             
@@ -275,9 +293,12 @@ new #[Layout('layouts.app')] class extends Component {
                     <div class="p-5 flex flex-col md:flex-row gap-5">
                         <!-- Left Info -->
                         <div class="flex-1">
-                            <div class="flex items-center gap-2 mb-2">
+                            <div class="flex flex-wrap items-center gap-2 mb-2">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase bg-theme-body text-theme-muted border border-theme-border">
                                     {{ $proker->unit->nama_unit }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase bg-blue-50 text-blue-600 border border-blue-200">
+                                    Periode: {{ $proker->periode->nama_periode ?? 'Unknown' }}
                                 </span>
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase {{ 
                                     $proker->status === 'disetujui' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 
@@ -310,7 +331,7 @@ new #[Layout('layouts.app')] class extends Component {
                         <!-- Right Actions & Stats -->
                         <div class="md:w-64 flex flex-col md:items-end justify-between border-t md:border-t-0 md:border-l border-theme-border pt-4 md:pt-0 md:pl-5 gap-4">
                             <div class="text-left md:text-right w-full">
-                                <p class="text-[10px] font-bold text-theme-muted uppercase tracking-widest mb-0.5">Anggaran ({{ $proker->tahun_anggaran }})</p>
+                                <p class="text-[10px] font-bold text-theme-muted uppercase tracking-widest mb-0.5">Pagu Anggaran</p>
                                 <p class="text-lg font-black text-theme-text">Rp {{ number_format($proker->anggaran_rencana, 0, ',', '.') }}</p>
                             </div>
                             
@@ -337,12 +358,12 @@ new #[Layout('layouts.app')] class extends Component {
                     </div>
                 </div>
             @empty
-                <div class="bg-theme-surface border border-theme-border rounded-2xl p-12 text-center">
+                <div class="bg-theme-surface border border-theme-border rounded-2xl p-12 text-center shadow-sm">
                     <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-theme-body mb-4">
                         <svg class="w-8 h-8 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
                     </div>
                     <h3 class="text-lg font-bold text-theme-text mb-1">Belum Ada Program Kerja</h3>
-                    <p class="text-theme-muted text-sm max-w-md mx-auto">Unit Anda belum menyusun rencana program kerja untuk tahun ini. Silakan mulai dengan menekan tombol "Susun Proker".</p>
+                    <p class="text-theme-muted text-sm max-w-md mx-auto">Unit Anda belum menyusun rencana program kerja untuk periode ini. Silakan mulai dengan menekan tombol "Susun Proker".</p>
                 </div>
             @endforelse
         </div>
@@ -354,7 +375,7 @@ new #[Layout('layouts.app')] class extends Component {
 
     <!-- Modal Form -->
     @if($isModalOpen)
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-theme-text/20 backdrop-blur-sm p-4 transition-opacity" style="pointer-events: auto;">
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-theme-text/40 backdrop-blur-sm p-4 transition-opacity" style="pointer-events: auto;">
             <div class="bg-theme-surface rounded-2xl border border-theme-border shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh] overflow-hidden" onclick="event.stopPropagation()">
                 <!-- Header -->
                 <div class="px-6 py-4 border-b border-theme-border bg-theme-body/50 flex justify-between items-center z-10 shrink-0">
@@ -394,12 +415,17 @@ new #[Layout('layouts.app')] class extends Component {
                                 </div>
 
                                 <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1.5">Tahun Anggaran <span class="text-red-500">*</span></label>
-                                        <input type="number" wire:model="tahun_anggaran" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text font-mono">
-                                        @error('tahun_anggaran') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                                    <div class="col-span-2 md:col-span-1">
+                                        <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1.5">Periode Akademik / Kinerja <span class="text-red-500">*</span></label>
+                                        <select wire:model.live="periode_id" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text font-bold">
+                                            <option value="">-- Pilih Periode --</option>
+                                            @foreach($availablePeriodes as $p)
+                                                <option value="{{ $p->id }}">{{ $p->nama_periode }}</option>
+                                            @endforeach
+                                        </select>
+                                        @error('periode_id') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
                                     </div>
-                                    <div>
+                                    <div class="col-span-2 md:col-span-1">
                                         <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1.5">Pagu Anggaran (Rp) <span class="text-red-500">*</span></label>
                                         <input type="number" wire:model="anggaran_rencana" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text font-mono">
                                         @error('anggaran_rencana') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
@@ -414,14 +440,14 @@ new #[Layout('layouts.app')] class extends Component {
                                         <h4 class="text-sm font-bold text-theme-text">Target Indikator (IKU/IKT)</h4>
                                         <p class="text-[10px] text-theme-muted uppercase tracking-wider mt-0.5">Pemetaan Output Program</p>
                                     </div>
-                                    <button type="button" wire:click="addIndicator" class="px-2.5 py-1 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded text-xs font-bold transition-colors">
+                                    <button type="button" wire:click="addIndicator" class="px-2.5 py-1 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded text-xs font-bold transition-colors shadow-sm">
                                         + Tambah Target
                                     </button>
                                 </div>
 
                                 <div class="space-y-3">
                                     @foreach($selectedIndicators as $index => $indicator)
-                                        <div class="bg-theme-surface border border-theme-border p-3 rounded-xl relative group">
+                                        <div class="bg-theme-surface border border-theme-border p-3 rounded-xl relative group shadow-sm">
                                             <button type="button" wire:click="removeIndicator({{ $index }})" class="absolute -top-2 -right-2 w-6 h-6 bg-red-100 text-red-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border border-red-200">
                                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                                             </button>
@@ -452,8 +478,8 @@ new #[Layout('layouts.app')] class extends Component {
                                     @endforeach
                                     
                                     @if(count($selectedIndicators) === 0)
-                                        <div class="text-center py-4 border-2 border-dashed border-theme-border rounded-xl">
-                                            <p class="text-xs text-theme-muted">Belum ada target indikator.</p>
+                                        <div class="text-center py-4 border-2 border-dashed border-theme-border rounded-xl bg-theme-surface">
+                                            <p class="text-xs text-theme-muted font-medium">Belum ada target indikator yang dipetakan.</p>
                                         </div>
                                     @endif
                                 </div>
@@ -474,10 +500,10 @@ new #[Layout('layouts.app')] class extends Component {
                         @endphp
                         
                         @if($canEdit)
-                            <button type="button" wire:click="saveProker('draft')" class="px-4 py-2 bg-theme-surface border border-theme-border hover:border-primary text-theme-text text-sm font-bold rounded-xl transition-all">
+                            <button type="button" wire:click="saveProker('draft')" class="px-4 py-2 bg-theme-surface border border-theme-border hover:border-primary text-theme-text text-sm font-bold rounded-xl transition-all shadow-sm">
                                 Simpan Draft
                             </button>
-                            <button type="button" wire:click="saveProker('submit')" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-primary/20">
+                            <button type="button" wire:click="saveProker('submit')" class="px-4 py-2 bg-primary hover:bg-primary-hover text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-primary/20">
                                 Simpan & Ajukan
                             </button>
                         @endif

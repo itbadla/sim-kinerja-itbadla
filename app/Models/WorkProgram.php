@@ -11,6 +11,7 @@ class WorkProgram extends Model
 {
     protected $fillable = [
         'unit_id',
+        'periode_id',
         'nama_proker',
         'deskripsi',
         'tahun_anggaran',
@@ -49,5 +50,10 @@ class WorkProgram extends Model
     public function logbooks(): HasMany
     {
         return $this->hasMany(Logbook::class);
+    }
+
+    public function periode(): BelongsTo
+    {
+        return $this->belongsTo(Periode::class, 'periode_id');
     }
 }

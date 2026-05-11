@@ -14,6 +14,7 @@ class FundSubmission extends Model
         'user_id',
         'unit_id',
         'work_program_id',
+        'periode_id',
         'tipe_pengajuan',
         'nominal',
         'keperluan',
@@ -43,5 +44,9 @@ class FundSubmission extends Model
     public function workProgram(): BelongsTo
     {
         return $this->belongsTo(WorkProgram::class);
+    }
+    public function periode(): BelongsTo
+    {
+        return $this->belongsTo(Periode::class, 'periode_id');
     }
 }

@@ -14,6 +14,7 @@ class Logbook extends Model
         'user_id',
         'unit_id',
         'work_program_id',
+        'periode_id',
         'tanggal',
         'jam_mulai',
         'jam_selesai',
@@ -62,5 +63,10 @@ class Logbook extends Model
     public function verifier(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function periode(): BelongsTo
+    {
+        return $this->belongsTo(Periode::class, 'periode_id');
     }
 }

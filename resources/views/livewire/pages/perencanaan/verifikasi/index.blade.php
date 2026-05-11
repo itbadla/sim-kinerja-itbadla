@@ -4,23 +4,36 @@ use Livewire\Volt\Component;
 use Livewire\Attributes\Layout;
 use Livewire\WithPagination;
 use App\Models\WorkProgram;
+use App\Models\Periode;
 
 new #[Layout('layouts.app')] class extends Component {
     use WithPagination;
 
     public $search = '';
     public $filterStatus = 'review_lpm';
+    public $selectedPeriodeId = ''; // State untuk Dropdown Periode
     
     // Modal Details
     public $isModalOpen = false;
     public $selectedProker = null;
 
+    public function mount()
+    {
+        // Set dropdown ke periode yang aktif saat ini secara default
+        $currentPeriode = Periode::where('is_current', true)->first();
+        if ($currentPeriode) {
+            $this->selectedPeriodeId = $currentPeriode->id;
+        }
+    }
+
     public function updatingSearch() { $this->resetPage(); }
     public function updatingFilterStatus() { $this->resetPage(); }
+    public function updatingSelectedPeriodeId() { $this->resetPage(); }
 
     public function openDetailModal($id)
     {
-        $this->selectedProker = WorkProgram::with('unit', 'indicators')->findOrFail($id);
+        // Pastikan memuat relasi 'periode' juga
+        $this->selectedProker = WorkProgram::with(['unit', 'indicators', 'periode'])->findOrFail($id);
         $this->isModalOpen = true;
     }
 
@@ -50,37 +63,61 @@ new #[Layout('layouts.app')] class extends Component {
 
     public function with(): array
     {
-        $query = WorkProgram::with('unit', 'indicators');
+        $allPeriodes = Periode::orderBy('tanggal_mulai', 'desc')->get();
+        $prokers = collect();
 
-        if ($this->filterStatus) {
-            $query->where('status', $this->filterStatus);
-        }
+        // Hanya tampilkan data jika ada periode yang dipilih
+        if ($this->selectedPeriodeId) {
+            $query = WorkProgram::with(['unit', 'indicators', 'periode'])
+                                ->where('periode_id', $this->selectedPeriodeId);
 
-        if ($this->search) {
-            $query->where(function ($q) {
-                $q->whereHas('unit', function ($qu) {
-                    $qu->where('nama_unit', 'like', '%' . $this->search . '%');
-                })->orWhere('nama_proker', 'like', '%' . $this->search . '%');
-            });
+            if ($this->filterStatus) {
+                $query->where('status', $this->filterStatus);
+            }
+
+            if ($this->search) {
+                $query->where(function ($q) {
+                    $q->whereHas('unit', function ($qu) {
+                        $qu->where('nama_unit', 'like', '%' . $this->search . '%');
+                    })->orWhere('nama_proker', 'like', '%' . $this->search . '%');
+                });
+            }
+
+            $prokers = $query->orderBy('updated_at', 'desc')->paginate(10);
         }
 
         return [
-            'prokers' => $query->orderBy('updated_at', 'desc')->paginate(10),
+            'prokers' => $prokers,
+            'allPeriodes' => $allPeriodes,
         ];
     }
 }; ?>
 
 <div class="space-y-6">
-    <!-- Header Section -->
+    <!-- Header Section & Dropdown Periode -->
     <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
             <h1 class="text-2xl font-black text-theme-text uppercase tracking-tight">Verifikasi Program Kerja</h1>
             <p class="text-sm font-medium text-theme-muted mt-1">Evaluasi dan berikan persetujuan untuk rencana kegiatan (Proker) unit kerja.</p>
         </div>
+        
+        <!-- Dropdown Filter Periode -->
+        <div class="w-full sm:w-64">
+            <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1">Pilih Periode Kinerja</label>
+            <select wire:model.live="selectedPeriodeId" class="w-full border-gray-300 bg-white rounded-xl text-sm font-bold text-gray-900 focus:ring-primary focus:border-primary shadow-sm cursor-pointer">
+                <option value="">-- Pilih Periode --</option>
+                @foreach($allPeriodes as $p)
+                    <option value="{{ $p->id }}">
+                        {{ $p->nama_periode }} 
+                        @if($p->is_current) (Aktif) @endif
+                    </option>
+                @endforeach
+            </select>
+        </div>
     </div>
 
     <!-- Filters -->
-    <div class="bg-theme-surface border border-theme-border rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-3">
+    <div class="bg-theme-surface border border-theme-border rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-3 shadow-sm">
         <div class="w-full sm:w-48">
             <label class="block text-[10px] font-bold text-theme-muted uppercase tracking-wider mb-1.5">Status Verifikasi</label>
             <select wire:model.live="filterStatus" class="block w-full border border-theme-border bg-theme-body rounded-xl py-2 px-3 text-sm focus:ring-primary focus:border-primary text-theme-text font-bold">
@@ -103,31 +140,40 @@ new #[Layout('layouts.app')] class extends Component {
         </div>
     </div>
 
+    <!-- Warning Jika Belum Pilih Periode -->
+    @if(!$selectedPeriodeId)
+        <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-4 text-sm font-medium flex items-center gap-3 shadow-sm">
+            <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            Silakan pilih Periode Kinerja terlebih dahulu untuk memverifikasi program kerja.
+        </div>
+    @endif
+
     <!-- Flash Messages -->
     @if(session()->has('success'))
-        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-4 text-sm font-medium flex items-center gap-3">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-4 text-sm font-medium flex items-center gap-3 shadow-sm">
             <svg class="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
             {{ session('success') }}
         </div>
     @endif
     @if(session()->has('error'))
-        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 text-sm font-medium flex items-center gap-3">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 text-sm font-medium flex items-center gap-3 shadow-sm">
             <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             {{ session('error') }}
         </div>
     @endif
 
     <!-- Table List -->
-    <div class="bg-theme-surface border border-theme-border rounded-2xl overflow-hidden">
+    @if($selectedPeriodeId)
+    <div class="bg-theme-surface border border-theme-border rounded-2xl overflow-hidden shadow-sm">
         <div class="overflow-x-auto">
             <table class="w-full text-left text-sm text-theme-text">
-                <thead class="bg-theme-body text-theme-muted uppercase tracking-wider text-[10px] font-bold">
+                <thead class="bg-theme-body/50 text-theme-muted uppercase tracking-wider text-[10px] font-bold border-b border-theme-border">
                     <tr>
                         <th class="px-6 py-4 border-b border-theme-border">Unit Pengusul</th>
-                        <th class="px-6 py-4 border-b border-theme-border">Nama Program Kerja</th>
-                        <th class="px-6 py-4 border-b border-theme-border text-center">Tahun / Anggaran</th>
+                        <th class="px-6 py-4 border-b border-theme-border w-1/3">Nama Program Kerja</th>
+                        <th class="px-6 py-4 border-b border-theme-border text-center">Periode / Anggaran</th>
                         <th class="px-6 py-4 border-b border-theme-border text-center">Status</th>
-                        <th class="px-6 py-4 border-b border-theme-border text-center">Aksi</th>
+                        <th class="px-6 py-4 border-b border-theme-border text-right">Aksi</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-theme-border">
@@ -147,7 +193,7 @@ new #[Layout('layouts.app')] class extends Component {
                                 @endif
                             </td>
                             <td class="px-6 py-4 text-center">
-                                <div class="font-bold text-theme-text">{{ $proker->tahun_anggaran }}</div>
+                                <div class="font-bold text-theme-text">{{ $proker->periode->nama_periode ?? 'N/A' }}</div>
                                 <div class="text-xs text-theme-muted font-mono mt-0.5">Rp {{ number_format($proker->anggaran_rencana, 0, ',', '.') }}</div>
                             </td>
                             <td class="px-6 py-4 text-center">
@@ -170,8 +216,8 @@ new #[Layout('layouts.app')] class extends Component {
                                     </span>
                                 @endif
                             </td>
-                            <td class="px-6 py-4 text-center">
-                                <div class="flex items-center justify-center gap-2">
+                            <td class="px-6 py-4 text-right">
+                                <div class="flex items-center justify-end gap-2">
                                     <button wire:click="openDetailModal({{ $proker->id }})" class="p-2 text-theme-muted hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Lihat Detail">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
                                     </button>
@@ -194,7 +240,7 @@ new #[Layout('layouts.app')] class extends Component {
                                     <svg class="w-8 h-8 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 </div>
                                 <h3 class="text-lg font-bold text-theme-text mb-1">Tidak Ada Data Ditemukan</h3>
-                                <p class="text-theme-muted text-sm max-w-md mx-auto">Sesuai dengan filter yang Anda gunakan, belum ada proker yang perlu ditinjau.</p>
+                                <p class="text-theme-muted text-sm max-w-md mx-auto">Sesuai dengan filter yang Anda gunakan, belum ada proker yang perlu ditinjau pada periode ini.</p>
                             </td>
                         </tr>
                     @endforelse
@@ -208,6 +254,7 @@ new #[Layout('layouts.app')] class extends Component {
             </div>
         @endif
     </div>
+    @endif
 
     <!-- Modal Detail -->
     @if($isModalOpen && $selectedProker)
@@ -240,8 +287,8 @@ new #[Layout('layouts.app')] class extends Component {
                             </div>
                             <div class="grid grid-cols-2 gap-4 pt-2 border-t border-theme-border">
                                 <div>
-                                    <p class="text-[10px] font-bold text-theme-muted uppercase tracking-widest mb-1">Tahun Anggaran</p>
-                                    <p class="text-sm font-bold text-theme-text font-mono">{{ $selectedProker->tahun_anggaran }}</p>
+                                    <p class="text-[10px] font-bold text-theme-muted uppercase tracking-widest mb-1">Periode Kinerja</p>
+                                    <p class="text-sm font-bold text-theme-text font-mono">{{ $selectedProker->periode->nama_periode ?? '-' }}</p>
                                 </div>
                                 <div>
                                     <p class="text-[10px] font-bold text-theme-muted uppercase tracking-widest mb-1">Pagu Anggaran</p>

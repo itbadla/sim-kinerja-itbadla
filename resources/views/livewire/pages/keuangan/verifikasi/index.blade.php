@@ -5,6 +5,7 @@ use Livewire\Attributes\Layout;
 use Livewire\WithPagination;
 use App\Models\FundSubmission;
 use App\Models\Unit;
+use App\Models\Periode;
 use Illuminate\Support\Facades\Auth;
 
 new #[Layout('layouts.app')] class extends Component {
@@ -12,6 +13,7 @@ new #[Layout('layouts.app')] class extends Component {
 
     public $search = '';
     public $filterStatus = 'pending'; // Default melihat yang pending
+    public $selectedPeriodeId = ''; // State untuk Dropdown Periode
 
     // ==========================================
     // STATE: MODAL VERIFIKASI
@@ -23,8 +25,18 @@ new #[Layout('layouts.app')] class extends Component {
     public $actionStatus = ''; // 'approved' atau 'rejected'
     public $catatan = '';
 
+    public function mount()
+    {
+        // Set dropdown ke periode yang aktif saat ini secara default
+        $currentPeriode = Periode::where('is_current', true)->first();
+        if ($currentPeriode) {
+            $this->selectedPeriodeId = $currentPeriode->id;
+        }
+    }
+
     public function updatingSearch() { $this->resetPage(); }
     public function updatingFilterStatus() { $this->resetPage(); }
+    public function updatingSelectedPeriodeId() { $this->resetPage(); }
 
     // ==========================================
     // FUNGSI: BUKA MODAL
@@ -45,6 +57,14 @@ new #[Layout('layouts.app')] class extends Component {
     // ==========================================
     public function saveVerification()
     {
+        $periode = Periode::find($this->selectedPeriodeId);
+
+        // Proteksi tambahan: Pastikan periode tidak dalam status closed
+        if (!$periode || $periode->status === 'closed') {
+            session()->flash('error', 'Gagal memverifikasi! Periode ini sudah dikunci.');
+            return;
+        }
+
         $this->validate([
             'actionStatus' => 'required|in:approved,rejected',
             // Catatan wajib diisi jika ditolak
@@ -73,57 +93,111 @@ new #[Layout('layouts.app')] class extends Component {
     public function with(): array
     {
         $user = Auth::user();
+        $allPeriodes = Periode::orderBy('tanggal_mulai', 'desc')->get();
+        $selectedPeriode = Periode::find($this->selectedPeriodeId);
+
+        $submissions = collect();
         
-        // Mulai Query
-        $query = FundSubmission::with(['user', 'unit'])->latest();
+        if ($selectedPeriode) {
+            // Mulai Query dengan memfilter berdasarkan periode aktif
+            $query = FundSubmission::with(['user', 'unit'])
+                ->where('periode_id', $selectedPeriode->id)
+                ->latest();
 
-        // LOGIKA HAK AKSES MELIHAT DATA
-        // Jika dia adalah Admin Keuangan, dia bisa melihat semua.
-        // Jika dia hanya Kepala Unit, dia hanya melihat pengajuan dari unit yang dipimpinnya (dan bukan pengajuannya sendiri).
-        if (!$user->hasRole(['admin', 'keuangan'])) {
-            $headedUnitIds = Unit::where('kepala_unit_id', $user->id)->pluck('id');
-            $query->whereIn('unit_id', $headedUnitIds)
-                  ->where('user_id', '!=', $user->id); // Tidak memverifikasi pengajuan sendiri
-        }
+            // LOGIKA HAK AKSES MELIHAT DATA
+            // Jika dia adalah Admin Keuangan/Super Admin, dia bisa melihat semua.
+            // Jika dia hanya Kepala Unit, dia hanya melihat pengajuan dari unit yang dipimpinnya (dan bukan pengajuannya sendiri).
+            if (!$user->hasRole(['Super Admin', 'admin', 'keuangan'])) {
+                $headedUnitIds = Unit::where('kepala_unit_id', $user->id)->pluck('id');
+                $query->whereIn('unit_id', $headedUnitIds)
+                      ->where('user_id', '!=', $user->id); // Tidak memverifikasi pengajuan sendiri
+            }
 
-        // Filter Status
-        if ($this->filterStatus) {
-            $query->where('status', $this->filterStatus);
-        }
+            // Filter Status
+            if ($this->filterStatus) {
+                $query->where('status', $this->filterStatus);
+            }
 
-        // Filter Pencarian (Cari berdasarkan nama pengaju atau keperluan)
-        if ($this->search) {
-            $query->where(function($q) {
-                $q->where('keperluan', 'like', '%' . $this->search . '%')
-                  ->orWhereHas('user', function($qu) {
-                      $qu->where('name', 'like', '%' . $this->search . '%');
-                  });
-            });
+            // Filter Pencarian (Cari berdasarkan nama pengaju atau keperluan)
+            if ($this->search) {
+                $query->where(function($q) {
+                    $q->where('keperluan', 'like', '%' . $this->search . '%')
+                      ->orWhereHas('user', function($qu) {
+                          $qu->where('name', 'like', '%' . $this->search . '%');
+                      });
+                });
+            }
+
+            $submissions = $query->paginate(10);
         }
 
         return [
-            'submissions' => $query->paginate(10),
+            'submissions' => $submissions,
+            'allPeriodes' => $allPeriodes,
+            'selectedPeriode' => $selectedPeriode,
         ];
     }
 }; ?>
 
 <div class="space-y-6 relative">
-    <!-- Header Halaman -->
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
+    <!-- Header Halaman & Dropdown Periode -->
+    <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+        <div class="flex-1">
             <h1 class="text-2xl font-extrabold text-theme-text tracking-tight">Verifikasi Keuangan</h1>
             <p class="text-sm text-theme-muted mt-1">Tinjau, setujui, atau tolak pengajuan anggaran dari bawahan Anda.</p>
+        </div>
+        
+        <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+            <!-- Dropdown Filter Periode -->
+            <div class="w-full sm:w-64">
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Pilih Periode Kinerja</label>
+                <select wire:model.live="selectedPeriodeId" class="w-full border-gray-300 bg-gray-50 rounded-xl text-sm font-bold text-gray-900 focus:ring-primary focus:border-primary shadow-sm cursor-pointer">
+                    <option value="">-- Pilih Periode --</option>
+                    @foreach($allPeriodes as $p)
+                        <option value="{{ $p->id }}">
+                            {{ $p->nama_periode }} 
+                            @if($p->is_current) (Aktif) @endif
+                            @if($p->status === 'closed') (Arsip) @endif
+                        </option>
+                    @endforeach
+                </select>
+            </div>
         </div>
     </div>
 
     <!-- Alert Sukses/Error -->
+    @if (session()->has('error'))
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 4000)" class="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm">
+            <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            {{ session('error') }}
+        </div>
+    @endif
     @if (session()->has('success'))
-        <div class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm">
             <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             {{ session('success') }}
         </div>
     @endif
 
+    <!-- Warning Jika Belum Pilih Periode / Terkunci -->
+    @if(!$selectedPeriode)
+        <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-4 text-sm font-medium flex items-center gap-3 shadow-sm">
+            <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            Sistem terkunci. Belum ada periode yang dipilih atau periode aktif belum tersedia. Harap hubungi Administrator.
+        </div>
+    @elseif($selectedPeriode->status === 'closed')
+        <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-xl shadow-sm">
+            <div class="flex items-center">
+                <svg class="h-6 w-6 text-amber-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                <div>
+                    <h3 class="text-sm font-bold text-amber-800">Periode {{ $selectedPeriode->nama_periode }} Ditutup</h3>
+                    <p class="text-sm text-amber-700 mt-1">Periode ini telah diarsipkan. Anda hanya dapat melihat data tanpa bisa memverifikasi atau mengubahnya.</p>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    @if($selectedPeriode)
     <!-- Kotak Filter & Pencarian -->
     <div class="bg-theme-surface p-4 rounded-2xl border border-theme-border shadow-sm flex flex-col md:flex-row items-center gap-3">
         <!-- Filter Status -->
@@ -207,17 +281,23 @@ new #[Layout('layouts.app')] class extends Component {
 
                             <!-- Aksi -->
                             <td class="px-6 py-4 align-top text-right">
-                                <button wire:click="openModal({{ $item->id }})" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-theme-body hover:bg-primary hover:text-white text-theme-text text-xs font-bold rounded-lg border border-theme-border hover:border-primary transition-colors shadow-sm">
-                                    Tinjau
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                </button>
+                                @if($item->status === 'pending' && $selectedPeriode->status !== 'closed')
+                                    <button wire:click="openModal({{ $item->id }})" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-theme-body hover:bg-primary hover:text-white text-theme-text text-xs font-bold rounded-lg border border-theme-border hover:border-primary transition-colors shadow-sm">
+                                        Tinjau
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                    </button>
+                                @else
+                                    <div class="flex justify-end pr-2">
+                                        <svg class="w-5 h-5 text-theme-muted opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24" title="Terkunci. Sudah diproses atau periode berakhir."><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                                    </div>
+                                @endif
                             </td>
                         </tr>
                     @empty
                         <tr>
                             <td colspan="5" class="px-6 py-16 text-center">
                                 <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-theme-body mb-4 border border-theme-border shadow-inner">
-                                    <svg class="w-10 h-10 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <svg class="w-10 h-10 text-theme-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 </div>
                                 <h4 class="text-base font-bold text-theme-text uppercase tracking-tight">Tidak Ada Data</h4>
                                 <p class="text-sm text-theme-muted mt-1">Belum ada pengajuan dana yang memerlukan verifikasi Anda saat ini.</p>
@@ -235,6 +315,7 @@ new #[Layout('layouts.app')] class extends Component {
             </div>
         @endif
     </div>
+    @endif
 
     <!-- ========================================== -->
     <!-- MODAL TINJAU & VERIFIKASI -->

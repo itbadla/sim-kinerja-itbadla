@@ -6,14 +6,11 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        Schema::create('tahun_anggaran', function (Blueprint $table) {
+        Schema::create('periodes', function (Blueprint $table) {
             $table->id();
-            $table->string('nama_tahun');
+            $table->string('nama_periode'); // Contoh: "TA 2024/2025" atau "2024"
             $table->date('tanggal_mulai');
             $table->date('tanggal_selesai');
             $table->enum('status', ['planning', 'active', 'closed'])->default('planning');
@@ -22,11 +19,8 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('tahun_anggaran');
+        Schema::dropIfExists('periodes');
     }
 };
