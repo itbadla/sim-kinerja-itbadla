@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
@@ -12,12 +11,12 @@ class PermissionSeeder extends Seeder
 {
     public function run(): void
     {
-        // Reset cache role dan permission (Sangat penting agar perubahan langsung terbaca)
+        // 1. Reset cache role dan permission (Sangat penting agar error tidak muncul)
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // 1. DAFTAR PERMISSION
+        // 2. DAFTAR PERMISSION (HAK AKSES)
         $permissions = [
-            // khusus pimpinan
+            // Khusus pimpinan
             'monitoring-universitas',
             
             // Utama
@@ -40,52 +39,27 @@ class PermissionSeeder extends Seeder
             Permission::firstOrCreate(['name' => $permission]);
         }
 
-        // 2. DISTRIBUSI KE ROLE
-        
-        // Super Admin: Mendapatkan akses penuh ke seluruh fitur sistem
-        $superAdmin = Role::where('name', 'Super Admin')->first();
-        if ($superAdmin) {
-            $superAdmin->givePermissionTo(Permission::all());
+        // 3. DEFINISI PERAN (ROLES) & DISTRIBUSI HAK AKSES
+        // Kita petakan peran sesuai dengan Master Jabatan nanti
+        $rolePermissions = [
+            'Rektor'          => ['dasbor', 'profil-saya', 'verifikasi-raker', 'verifikasi-logbook', 'team-saya', 'monitoring-universitas'],
+            'Wakil Rektor'    => ['dasbor', 'profil-saya', 'verifikasi-raker', 'verifikasi-logbook', 'team-saya', 'monitoring-universitas'],
+            'Dekan'           => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya'],
+            'Kepala Lembaga'  => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya'],
+            'Kepala Biro'     => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya'],
+            'Kepala Unit'     => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya'],
+            'Kaprodi'         => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya'],
+            'Dosen'           => ['dasbor', 'profil-saya', 'logbook-harian', 'pengajuan-dana'],
+            'Staff'           => ['dasbor', 'profil-saya', 'logbook-harian', 'pengajuan-dana'],
+        ];
+
+        foreach ($rolePermissions as $roleName => $perms) {
+            $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'web']);
+            $role->syncPermissions($perms);
         }
 
-        // PASTIKAN REKTOR & WR PUNYA PERMISSION INI
-        $pimpinanTertinggi = ['Rektor', 'Wakil Rektor'];
-        foreach ($pimpinanTertinggi as $rName) {
-            $role = Role::where('name', $rName)->first();
-            if ($role) {
-                $role->givePermissionTo([
-                    'dasbor', 
-                    'profil-saya', 
-                    'verifikasi-raker', 
-                    'verifikasi-logbook', // <--- PENTING
-                    'team-saya',          // <--- PENTING
-                    'monitoring-universitas'
-                ]);
-            }
-        }
-
-        // Manajerial Unit: Dekan, Kaprodi, dan Kepala Lembaga/Biro
-        $manajerialRoles = ['Kepala Lembaga', 'Kepala Biro', 'Dekan', 'Kaprodi'];
-        foreach ($manajerialRoles as $rName) {
-            $role = Role::where('name', $rName)->first();
-            if ($role) {
-                $role->givePermissionTo(['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya']);
-            }
-        }
-
-        // Operasional: Dosen dan Staff umum
-        $operasionalRoles = ['Dosen', 'Staff'];
-        foreach ($operasionalRoles as $rName) {
-            $role = Role::where('name', $rName)->first();
-            if ($role) {
-                $role->givePermissionTo(['dasbor', 'profil-saya', 'logbook-harian', 'pengajuan-dana']);
-            }
-        }
-
-        // 3. MEMASTIKAN AKUN JARKOMIT ADALAH SUPER ADMIN
-        $jarkomit = User::where('email', 'jarkomit@ahmaddahlan.ac.id')->first();
-        if ($jarkomit) {
-            $jarkomit->assignRole('Super Admin');
-        }
+        // 4. SUPER ADMIN (Mendapatkan semua akses)
+        $superAdmin = Role::firstOrCreate(['name' => 'Super Admin', 'guard_name' => 'web']);
+        $superAdmin->syncPermissions(Permission::all());
     }
 }

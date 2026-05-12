@@ -1,1 +1,705 @@
-📑 BLUEPRINT ARSITEKTUR DATABASE (FINAL FULL VERSION) Sistem Informasi Manajemen Kinerja ITBADLA Institut Teknologi dan Bisnis Ahmad Dahlan Lamongan 🏗️ RINGKASAN PERUBAHAN (V3.0) Sistem kini tidak lagi menggunakan angka tahun manual (hardcoded), melainkan berbasis pada tabel fiscal_years. Hal ini memungkinkan Institut untuk mengelola periode perencanaan, masa aktif pengisian logbook, hingga penutupan buku (arsip) secara sistematis. 📅 MODUL 0: KONTROL PERIODE (Fiscal Year Control) Modul ini adalah jantung dari seluruh filter data di aplikasi. 1. Tabel fiscal_years Menyimpan periode anggaran resmi institut. id (bigint, PK) nama_tahun: (varchar) Contoh: "2024", "2025", atau "2025/2026". tanggal_mulai: (date) Awal periode. tanggal_selesai: (date) Akhir periode. status: (enum) planning: Tahap input Proker (Logbook belum bisa diisi). active: Tahap berjalan (Logbook & Keuangan bisa diisi). closed: Tahap laporan/arsip (Data terkunci, tidak bisa diedit). is_current: (boolean) Penanda tahun yang otomatis terpilih saat user login. 📦 MODUL 1: AUTENTIKASI & OTORISASI (Auth & RBAC) 2. Tabel users id (bigint, PK) name: Nama lengkap dengan gelar. email: (unique) Wajib domain @ahmaddahlan.ac.id atau @staff.ahmaddahlan.ac.id. google_id: (nullable) Untuk login SSO Google. atasan_id: (FK to users.id) Penunjuk langsung verifikator utama user tersebut. 3. Tabel Spatie (roles, permissions, model_has_roles) Standar RBAC untuk membatasi akses menu berdasarkan peran (Super Admin, Keuangan, Dosen, dll). 🏢 MODUL 2: STRUKTUR ORGANISASI & PENEMPATAN 4. Tabel positions (Master Jabatan) id, nama_jabatan, kategori. level_otoritas: (int) Skala 1 (Rektor) sampai 6 (Staff). 5. Tabel units (Unit Kerja) id, kode_unit, nama_unit. parent_id: (FK self) Untuk hierarki (Institut > Fakultas > Prodi). kepala_unit_id: (FK to users.id) Sebagai simbol pimpinan unit. 6. Tabel unit_user (Pivot Penempatan) Menghubungkan User + Unit + Position. Menangani Rangkap Jabatan dan Dosen Lintas Prodi dengan sangat rapi. 🎯 MODUL 3: TARGET INSTITUSI (Performa & IKU) 7. Tabel performance_indicators (IKU/IKT) id, kode_indikator, nama_indikator, kategori. fiscal_year_id: (FK to fiscal_years.id) Mengaitkan target ke tahun tertentu, karena target IKU bisa berubah tiap tahun. 📈 MODUL 4: PERENCANAAN (Program Kerja) 8. Tabel work_programs (Proker) id, unit_id, nama_proker, deskripsi. fiscal_year_id: (FK to fiscal_years.id) (Baru) Mengunci proker pada tahun anggaran tertentu. anggaran_rencana: (decimal 15,2). status: (enum) draft, reviewed, approved, rejected. 9. Tabel work_program_indicators (Pivot Target Proker) work_program_id, indicator_id, target_angka, satuan_target. 💼 MODUL 5: EKSEKUSI (Logbook & Keuangan) 10. Tabel fund_submissions (Keuangan & LPJ) id, user_id, unit_id, work_program_id. fiscal_year_id: (FK to fiscal_years.id) Memastikan transaksi tercatat di tahun yang benar. nominal, keperluan, file_lampiran, status. (LPJ Section): status_lpj, nominal_realisasi, file_lpj, waktu_pengembalian. 11. Tabel logbooks (Catatan Harian) id, user_id, unit_id, work_program_id. fiscal_year_id: (FK to fiscal_years.id) Memudahkan penarikan laporan per tahun tanpa kueri tanggal yang berat. tanggal, jam_mulai, jam_selesai, kategori, deskripsi_aktivitas, output, file_bukti. status, catatan_verifikator, verified_by, verified_at. 🚀 PANDUAN URUTAN MIGRASI (MIGRATION ORDER) Wajib dijalankan sesuai urutan ini untuk menghindari error Missing Table Reference: fiscal_years (Fondasi utama) users positions units performance_indicators (Terkait fiscal_years) unit_user (Pivot: users, units, positions) work_programs (Terkait units, fiscal_years) work_program_indicators (Pivot: proker, iku) fund_submissions (Terkait users, proker, fiscal_years) logbooks (Terkait users, proker, fiscal_years)
+public function up(): void
+
+    {
+
+        Schema::create('users', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->string('name');
+
+            $table->string('email')->unique();
+
+            $table->string('google_id')->nullable()->unique(); // Untuk SSO Google
+
+            $table->timestamp('email_verified_at')->nullable();
+
+            $table->string('password')->nullable(); // Nullable karena ada login Google
+
+            $table->rememberToken();
+
+            $table->timestamps();
+
+        });
+
+
+
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+
+            $table->string('email')->primary();
+
+            $table->string('token');
+
+            $table->timestamp('created_at')->nullable();
+
+        });
+
+
+
+        Schema::create('sessions', function (Blueprint $table) {
+
+            $table->string('id')->primary();
+
+            $table->foreignId('user_id')->nullable()->index();
+
+            $table->string('ip_address', 45)->nullable();
+
+            $table->text('user_agent')->nullable();
+
+            $table->longText('payload');
+
+            $table->integer('last_activity')->index();
+
+        });
+
+    }
+
+
+
+public function up(): void
+
+    {
+
+        Schema::create('cache', function (Blueprint $table) {
+
+            $table->string('key')->primary();
+
+            $table->mediumText('value');
+
+            $table->bigInteger('expiration')->index();
+
+        });
+
+
+
+        Schema::create('cache_locks', function (Blueprint $table) {
+
+            $table->string('key')->primary();
+
+            $table->string('owner');
+
+            $table->bigInteger('expiration')->index();
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        Schema::create('jobs', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->string('queue')->index();
+
+            $table->longText('payload');
+
+            $table->unsignedSmallInteger('attempts');
+
+            $table->unsignedInteger('reserved_at')->nullable();
+
+            $table->unsignedInteger('available_at');
+
+            $table->unsignedInteger('created_at');
+
+        });
+
+
+
+        Schema::create('job_batches', function (Blueprint $table) {
+
+            $table->string('id')->primary();
+
+            $table->string('name');
+
+            $table->integer('total_jobs');
+
+            $table->integer('pending_jobs');
+
+            $table->integer('failed_jobs');
+
+            $table->longText('failed_job_ids');
+
+            $table->mediumText('options')->nullable();
+
+            $table->integer('cancelled_at')->nullable();
+
+            $table->integer('created_at');
+
+            $table->integer('finished_at')->nullable();
+
+        });
+
+
+
+        Schema::create('failed_jobs', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->string('uuid')->unique();
+
+            $table->text('connection');
+
+            $table->text('queue');
+
+            $table->longText('payload');
+
+            $table->longText('exception');
+
+            $table->timestamp('failed_at')->useCurrent();
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        $teams = config('permission.teams');
+
+        $tableNames = config('permission.table_names');
+
+        $columnNames = config('permission.column_names');
+
+        $pivotRole = $columnNames['role_pivot_key'] ?? 'role_id';
+
+        $pivotPermission = $columnNames['permission_pivot_key'] ?? 'permission_id';
+
+
+
+        throw_if(empty($tableNames), 'Error: config/permission.php not loaded. Run [php artisan config:clear] and try again.');
+
+        throw_if($teams && empty($columnNames['team_foreign_key'] ?? null), 'Error: team_foreign_key on config/permission.php not loaded. Run [php artisan config:clear] and try again.');
+
+
+
+        /**
+
+         * See `docs/prerequisites.md` for suggested lengths on 'name' and 'guard_name' if "1071 Specified key was too long" errors are encountered.
+
+         */
+
+        Schema::create($tableNames['permissions'], static function (Blueprint $table) {
+
+            $table->id(); // permission id
+
+            $table->string('name');
+
+            $table->string('guard_name');
+
+            $table->timestamps();
+
+
+
+            $table->unique(['name', 'guard_name']);
+
+        });
+
+
+
+        /**
+
+         * See `docs/prerequisites.md` for suggested lengths on 'name' and 'guard_name' if "1071 Specified key was too long" errors are encountered.
+
+         */
+
+        Schema::create($tableNames['roles'], static function (Blueprint $table) use ($teams, $columnNames) {
+
+            $table->id(); // role id
+
+            if ($teams || config('permission.testing')) { // permission.testing is a fix for sqlite testing
+
+                $table->unsignedBigInteger($columnNames['team_foreign_key'])->nullable();
+
+                $table->index($columnNames['team_foreign_key'], 'roles_team_foreign_key_index');
+
+            }
+
+            $table->string('name');
+
+            $table->string('guard_name');
+
+            $table->timestamps();
+
+            if ($teams || config('permission.testing')) {
+
+                $table->unique([$columnNames['team_foreign_key'], 'name', 'guard_name']);
+
+            } else {
+
+                $table->unique(['name', 'guard_name']);
+
+            }
+
+        });
+
+
+
+        Schema::create($tableNames['model_has_permissions'], static function (Blueprint $table) use ($tableNames, $columnNames, $pivotPermission, $teams) {
+
+            $table->unsignedBigInteger($pivotPermission);
+
+
+
+            $table->string('model_type');
+
+            $table->unsignedBigInteger($columnNames['model_morph_key']);
+
+            $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_permissions_model_id_model_type_index');
+
+
+
+            $table->foreign($pivotPermission)
+
+                ->references('id') // permission id
+
+                ->on($tableNames['permissions'])
+
+                ->cascadeOnDelete();
+
+            if ($teams) {
+
+                $table->unsignedBigInteger($columnNames['team_foreign_key']);
+
+                $table->index($columnNames['team_foreign_key'], 'model_has_permissions_team_foreign_key_index');
+
+
+
+                $table->primary([$columnNames['team_foreign_key'], $pivotPermission, $columnNames['model_morph_key'], 'model_type'],
+
+                    'model_has_permissions_permission_model_type_primary');
+
+            } else {
+
+                $table->primary([$pivotPermission, $columnNames['model_morph_key'], 'model_type'],
+
+                    'model_has_permissions_permission_model_type_primary');
+
+            }
+
+        });
+
+
+
+        Schema::create($tableNames['model_has_roles'], static function (Blueprint $table) use ($tableNames, $columnNames, $pivotRole, $teams) {
+
+            $table->unsignedBigInteger($pivotRole);
+
+
+
+            $table->string('model_type');
+
+            $table->unsignedBigInteger($columnNames['model_morph_key']);
+
+            $table->index([$columnNames['model_morph_key'], 'model_type'], 'model_has_roles_model_id_model_type_index');
+
+
+
+            $table->foreign($pivotRole)
+
+                ->references('id') // role id
+
+                ->on($tableNames['roles'])
+
+                ->cascadeOnDelete();
+
+            if ($teams) {
+
+                $table->unsignedBigInteger($columnNames['team_foreign_key']);
+
+                $table->index($columnNames['team_foreign_key'], 'model_has_roles_team_foreign_key_index');
+
+
+
+                $table->primary([$columnNames['team_foreign_key'], $pivotRole, $columnNames['model_morph_key'], 'model_type'],
+
+                    'model_has_roles_role_model_type_primary');
+
+            } else {
+
+                $table->primary([$pivotRole, $columnNames['model_morph_key'], 'model_type'],
+
+                    'model_has_roles_role_model_type_primary');
+
+            }
+
+        });
+
+
+
+        Schema::create($tableNames['role_has_permissions'], static function (Blueprint $table) use ($tableNames, $pivotRole, $pivotPermission) {
+
+            $table->unsignedBigInteger($pivotPermission);
+
+            $table->unsignedBigInteger($pivotRole);
+
+
+
+            $table->foreign($pivotPermission)
+
+                ->references('id') // permission id
+
+                ->on($tableNames['permissions'])
+
+                ->cascadeOnDelete();
+
+
+
+            $table->foreign($pivotRole)
+
+                ->references('id') // role id
+
+                ->on($tableNames['roles'])
+
+                ->cascadeOnDelete();
+
+
+
+            $table->primary([$pivotPermission, $pivotRole], 'role_has_permissions_permission_id_role_id_primary');
+
+        });
+
+
+
+        app('cache')
+
+            ->store(config('permission.cache.store') != 'default' ? config('permission.cache.store') : null)
+
+            ->forget(config('permission.cache.key'));
+
+    }
+
+public function up(): void
+
+    {
+
+        Schema::create('units', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->string('kode_unit', 20)->unique()->nullable(); // Contoh: LPPM, FEB, IF
+
+            $table->string('nama_unit'); 
+
+            
+
+            // Hirarki unit (Misal Prodi di bawah Fakultas)
+
+            $table->foreignId('parent_id')->nullable()->constrained('units')->nullOnDelete();
+
+            
+
+            // Kepala Unit (Langsung relasi ke users)
+
+            $table->foreignId('kepala_unit_id')->nullable()->constrained('users')->nullOnDelete();
+
+            
+
+            $table->timestamps();
+
+            $table->softDeletes();
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        Schema::create('positions', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->string('nama_jabatan'); 
+
+            $table->foreignId('role_id')->nullable()->constrained('roles')->nullOnDelete();
+
+            $table->integer('level_otoritas'); 
+
+            $table->string('kategori'); 
+
+            $table->timestamps();
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        Schema::create('unit_user', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+
+            $table->foreignId('unit_id')->constrained('units')->cascadeOnDelete();
+
+            
+
+            $table->foreignId('position_id')->nullable()->constrained('positions')->cascadeOnDelete();
+
+            $table->boolean('is_active')->default(true);
+
+            $table->timestamps();
+
+            
+
+            // Mencegah duplikasi data
+
+            $table->unique(['user_id', 'unit_id']);
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        Schema::create('periodes', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->string('nama_periode'); // Contoh: "TA 2024/2025" atau "2024"
+
+            $table->date('tanggal_mulai');
+
+            $table->date('tanggal_selesai');
+
+            $table->enum('status', ['planning', 'active', 'closed'])->default('planning');
+
+            $table->boolean('is_current')->default(false);
+
+            $table->timestamps();
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        Schema::create('performance_indicators', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
+
+            $table->string('kode_indikator', 20); 
+
+            $table->text('nama_indikator');
+
+            $table->enum('kategori', ['IKU', 'IKT']); 
+
+            $table->timestamps();
+
+
+
+            // TAMBAHKAN BARIS INI: Agar kode unik per periode, bukan global
+
+            $table->unique(['periode_id', 'kode_indikator']);
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        // 1. Tabel Utama Program Kerja
+
+        Schema::create('work_programs', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->foreignId('unit_id')->constrained('units')->cascadeOnDelete();
+
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
+
+            
+
+            $table->string('nama_proker');
+
+            $table->text('deskripsi')->nullable();
+
+            $table->decimal('anggaran_rencana', 15, 2);
+
+            
+
+            // Status approval dari Rapat Kerja
+
+            $table->enum('status', ['draft', 'review_lpm', 'disetujui', 'ditolak'])->default('draft');
+
+            $table->timestamps();
+
+        });
+
+
+
+        // 2. Tabel Pivot: 1 Proker mendukung IKU/IKT yang mana saja
+
+        Schema::create('work_program_indicators', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->foreignId('work_program_id')->constrained('work_programs')->cascadeOnDelete();
+
+            $table->foreignId('indicator_id')->constrained('performance_indicators')->cascadeOnDelete();
+
+            
+
+            // Target capaian untuk IKU tersebut
+
+            $table->float('target_angka'); 
+
+            $table->string('satuan_target', 50); // Contoh: '%', 'Dokumen', 'Mitra'
+
+        });
+
+    }
+
+
+
+public function up(): void
+
+    {
+
+        Schema::create('fund_submissions', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+
+            $table->foreignId('unit_id')->nullable()->constrained('units')->nullOnDelete();
+
+            
+
+            // Link ke Proker (Wajib agar terukur)
+
+            $table->foreignId('work_program_id')->nullable()->constrained('work_programs')->nullOnDelete();
+
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
+
+            
+
+            $table->enum('tipe_pengajuan', ['pribadi', 'lembaga'])->default('pribadi');
+
+            $table->decimal('nominal', 15, 2);
+
+            $table->text('keperluan');
+
+            $table->string('file_lampiran')->nullable(); 
+
+            
+
+            // Status Alur Pengajuan
+
+            $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
+
+            $table->text('catatan_verifikator')->nullable();
+
+            
+
+            // Bagian LPJ
+
+            $table->enum('status_lpj', ['belum', 'menunggu_verifikasi', 'selesai'])->default('belum');
+
+            $table->decimal('nominal_realisasi', 15, 2)->nullable();
+
+            $table->string('file_lpj')->nullable();
+
+            $table->timestamp('waktu_pengembalian')->nullable();
+
+            $table->string('catatan_pengembalian')->nullable();
+
+
+
+            $table->timestamps();
+
+            $table->softDeletes(); 
+
+        });
+
+    }
+
+public function up(): void
+
+    {
+
+        Schema::create('logbooks', function (Blueprint $table) {
+
+            $table->id();
+
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+
+            $table->foreignId('unit_id')->nullable()->constrained('units')->nullOnDelete();
+
+            // Tautkan ke Proker jika logbook ini adalah progres pengerjaan proker
+
+            $table->foreignId('work_program_id')->nullable()->constrained('work_programs')->nullOnDelete();
+
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
+
+
+
+            
+
+            $table->date('tanggal');
+
+            $table->time('jam_mulai');
+
+            $table->time('jam_selesai');
+
+            
+
+            $table->string('kategori')->default('tugas_utama');
+
+            $table->text('deskripsi_aktivitas');
+
+            $table->string('output')->nullable(); 
+
+            $table->string('file_bukti')->nullable(); 
+
+            $table->string('link_bukti')->nullable(); 
+
+            
+
+            $table->enum('status', ['draft', 'pending', 'approved', 'rejected'])->default('draft');
+
+            $table->text('catatan_verifikator')->nullable();
+
+            
+
+            // Verifikator harian
+
+            $table->foreignId('verified_by')->nullable()->constrained('users')->nullOnDelete();
+
+            $table->timestamp('verified_at')->nullable();
+
+            
+
+            $table->timestamps();
+
+            $table->softDeletes();
+
+
+
+            // Indexing agar dashboard cepat saat memuat ribuan data logbook
+
+            $table->index('tanggal');
+
+            $table->index('status');
+
+            $table->index(['unit_id', 'status']); 
+
+        });
+
+    }

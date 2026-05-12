@@ -60,7 +60,7 @@ class Logbook extends Model
     /**
      * Siapa yang memverifikasi logbook ini?
      */
-    public function verifier(): BelongsTo
+    public function verifikator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
     }
@@ -69,4 +69,5 @@ class Logbook extends Model
     {
         return $this->belongsTo(Periode::class, 'periode_id');
     }
+
 }

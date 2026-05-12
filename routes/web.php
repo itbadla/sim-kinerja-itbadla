@@ -118,11 +118,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         
         // Kelola Unit & Hierarki
         Route::middleware('can:kelola-unit')->group(function () {
-            Volt::route('/units', 'pages.units.index')
-                ->name('units.index');
-
-            Volt::route('/units/{unit}', 'pages.units.detail')
-                ->name('units.detail'); 
+            Volt::route('/units', 'pages.units.index')->name('units.index');
+            Volt::route('/units/{unit}', 'pages.units.detail')->name('units.show');
         });
             
         // Kelola Role & Permission (Spatie)

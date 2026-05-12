@@ -62,6 +62,10 @@ new #[Layout('layouts.app')] class extends Component {
 
     public function saveNewUser()
     {
+        // Pastikan input checkbox tetap array
+        $this->newRoles = is_array($this->newRoles) ? $this->newRoles : [];
+        $this->headedUnitIds = is_array($this->headedUnitIds) ? $this->headedUnitIds : [];
+
         $this->validate([
             'newName' => 'required|string|max:255',
             'newEmail' => 'required|email|unique:users,email',
@@ -69,7 +73,7 @@ new #[Layout('layouts.app')] class extends Component {
             'newUnitId' => 'required|exists:units,id',
             'newPositionId' => 'required|exists:positions,id',
             'headedUnitIds' => 'nullable|array',
-            'headedUnitIds.*' => 'exists:units,id',
+            'newRoles' => 'nullable|array',
         ]);
 
         DB::transaction(function () {
@@ -80,30 +84,28 @@ new #[Layout('layouts.app')] class extends Component {
                 'email_verified_at' => now(),
             ]);
 
-            // 1. Tetapkan role manual dari UI (misal: Super Admin)
-            if (!empty($this->newRoles)) {
-                $user->assignRole($this->newRoles);
-            }
-
-            // 2. Simpan ke Pivot Unit (Homebase)
+            // 1. Simpan ke Pivot Unit & Jabatan
             $user->units()->attach($this->newUnitId, [
                 'position_id' => $this->newPositionId,
                 'is_active' => true
             ]);
 
-            // 3. [OTOMATISASI] Sinkronisasi Role dari Jabatan
-            if (method_exists($user, 'syncRolesFromPositions')) {
-                $user->syncRolesFromPositions();
+            // 2. Tentukan Role: Gabungkan Manual + Otomatis Jabatan
+            $roleFromPosition = Position::find($this->newPositionId)?->nama_jabatan;
+            $finalRoles = $this->newRoles;
+            if ($roleFromPosition && !in_array($roleFromPosition, $finalRoles)) {
+                $finalRoles[] = $roleFromPosition;
             }
+            $user->syncRoles($finalRoles);
 
-            // 4. Tetapkan status Kepala Unit jika ada
+            // 3. Update Amanah Kepala Unit
             if (!empty($this->headedUnitIds)) {
                 Unit::whereIn('id', $this->headedUnitIds)->update(['kepala_unit_id' => $user->id]);
             }
         });
 
         $this->isCreateModalOpen = false;
-        session()->flash('message', 'Pengguna berhasil ditambahkan beserta hak akses otomatisnya.');
+        session()->flash('message', 'Pengguna berhasil ditambahkan.');
     }
 
     // ==========================================
@@ -122,6 +124,7 @@ new #[Layout('layouts.app')] class extends Component {
         $this->editUnitId = $primaryUnit ? $primaryUnit->id : '';
         $this->editPositionId = $primaryUnit ? $primaryUnit->pivot->position_id : '';
         
+        // Load roles yang saat ini dimiliki
         $this->editRoles = $user->roles->pluck('name')->toArray(); 
         $this->headedUnitIds = Unit::where('kepala_unit_id', $user->id)->pluck('id')->toArray();
         $this->editPassword = ''; 
@@ -131,6 +134,10 @@ new #[Layout('layouts.app')] class extends Component {
 
     public function updateUser()
     {
+        // Fix untuk uncheck all (Livewire sends false/null if empty)
+        $this->editRoles = is_array($this->editRoles) ? $this->editRoles : [];
+        $this->headedUnitIds = is_array($this->headedUnitIds) ? $this->headedUnitIds : [];
+
         $this->validate([
             'editName' => 'required|string|max:255',
             'editEmail' => 'required|email|unique:users,email,' . $this->selectedUser->id,
@@ -138,11 +145,11 @@ new #[Layout('layouts.app')] class extends Component {
             'editUnitId' => 'required|exists:units,id',
             'editPositionId' => 'required|exists:positions,id',
             'headedUnitIds' => 'nullable|array',
-            'headedUnitIds.*' => 'exists:units,id',
+            'editRoles' => 'nullable|array',
         ]);
 
         DB::transaction(function () {
-            // 1. Update data dasar user
+            // 1. Perbarui Data Dasar
             $this->selectedUser->update([
                 'name' => $this->editName,
                 'email' => $this->editEmail,
@@ -152,10 +159,9 @@ new #[Layout('layouts.app')] class extends Component {
                 $this->selectedUser->update(['password' => bcrypt($this->editPassword)]);
             }
             
-            // 2. Sinkronisasi role manual dari Checkbox UI
-            $this->selectedUser->syncRoles($this->editRoles);
-            
-            // 3. Sync Unit Utama & Jabatan
+            // 2. Sinkronisasi Unit & Jabatan
+            // Kita gunakan syncWithoutDetaching untuk primary unit agar tidak menghapus unit lain 
+            // jika di masa depan user punya banyak penempatan.
             $this->selectedUser->units()->sync([
                 $this->editUnitId => [
                     'position_id' => $this->editPositionId,
@@ -163,20 +169,30 @@ new #[Layout('layouts.app')] class extends Component {
                 ]
             ]);
 
-            // 4. [OTOMATISASI] Panggil sync agar role jabatan terbaru diterapkan & menggantikan jika ada perubahan
-            if (method_exists($this->selectedUser, 'syncRolesFromPositions')) {
-                $this->selectedUser->syncRolesFromPositions();
+            // 3. Logika Role Cerdas: Gabungkan Pilihan Manual dengan Role Jabatan
+            $pos = Position::find($this->editPositionId);
+            $roleFromPosition = $pos ? $pos->nama_jabatan : null;
+            
+            $finalRoles = $this->editRoles;
+            // Jika jabatan dipilih, pastikan role jabatannya masuk ke dalam daftar
+            if ($roleFromPosition && !in_array($roleFromPosition, $finalRoles)) {
+                $finalRoles[] = $roleFromPosition;
             }
+            
+            // Simpan semua role sekaligus (mengakomodasi 2 atau lebih role)
+            $this->selectedUser->syncRoles($finalRoles);
 
-            // 5. Sync Kepala Unit
+            // 4. Update Amanah Kepala Unit
             Unit::where('kepala_unit_id', $this->selectedUser->id)->update(['kepala_unit_id' => null]);
             if (!empty($this->headedUnitIds)) {
                 Unit::whereIn('id', $this->headedUnitIds)->update(['kepala_unit_id' => $this->selectedUser->id]);
             }
+            
+            $this->selectedUser->refresh();
         });
 
         $this->isEditModalOpen = false;
-        session()->flash('message', 'Data dan hak akses pengguna berhasil diperbarui.');
+        session()->flash('message', 'Data pengguna dan peran berhasil diperbarui.');
     }
 
     public function confirmDelete($id)
@@ -197,7 +213,7 @@ new #[Layout('layouts.app')] class extends Component {
     public function impersonate($id)
     {
         if (!auth()->user()->hasRole('Super Admin')) {
-            return $this->dispatch('alert', ['type' => 'error', 'message' => 'Anda tidak memiliki otoritas.']);
+            return;
         }
         $userToImpersonate = User::findOrFail($id);
         if ($userToImpersonate->id === auth()->id()) return;
@@ -222,14 +238,13 @@ new #[Layout('layouts.app')] class extends Component {
     }
 }; ?>
 
-<div class="space-y-6 relative py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
+<div class="space-y-6 relative py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto text-theme-text">
     <!-- Header Halaman -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-            <h1 class="text-2xl font-extrabold text-theme-text tracking-tight">Kelola Pengguna</h1>
+            <h1 class="text-2xl font-extrabold tracking-tight">Kelola Pengguna</h1>
             <p class="text-sm text-theme-muted mt-1">Manajemen Dosen, Tendik, Unit, dan Hak Akses Sistem.</p>
         </div>
-        
         <button wire:click="openCreateModal" class="bg-primary hover:bg-primary-hover text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 transition-all flex items-center gap-2">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
             Tambah User
@@ -238,7 +253,7 @@ new #[Layout('layouts.app')] class extends Component {
 
     <!-- Feedback Message -->
     @if (session()->has('message'))
-        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl flex items-center justify-between">
+        <div x-data="{ show: true }" x-show="show" x-init="setTimeout(() => show = false, 3000)" class="p-4 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl flex items-center justify-between shadow-sm">
             <span class="text-sm font-medium">{{ session('message') }}</span>
         </div>
     @endif
@@ -249,7 +264,7 @@ new #[Layout('layouts.app')] class extends Component {
             <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-theme-muted">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             </span>
-            <input type="text" wire:model.live="search" class="block w-full pl-10 pr-3 py-2.5 border border-theme-border bg-theme-body rounded-xl focus:ring-primary text-sm text-theme-text transition-all" placeholder="Cari nama atau email...">
+            <input type="text" wire:model.live="search" class="block w-full pl-10 pr-3 py-2.5 border border-theme-border bg-theme-body rounded-xl focus:ring-primary text-sm transition-all" placeholder="Cari nama atau email...">
         </div>
     </div>
 
@@ -267,15 +282,15 @@ new #[Layout('layouts.app')] class extends Component {
                 </thead>
                 <tbody class="divide-y divide-theme-border">
                     @forelse($users as $user)
-                        <tr wire:key="user-{{ $user->id }}" class="hover:bg-theme-body/30 transition-colors">
+                        <tr wire:key="user-row-{{ $user->id }}" class="hover:bg-theme-body/30 transition-colors">
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shadow-inner uppercase">
+                                    <div class="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold shadow-inner uppercase text-xs">
                                         {{ substr($user->name, 0, 2) }}
                                     </div>
                                     <div>
-                                        <div class="text-sm font-bold text-theme-text">{{ $user->name }}</div>
-                                        <div class="text-xs text-theme-muted">{{ $user->email }}</div>
+                                        <div class="text-sm font-bold">{{ $user->name }}</div>
+                                        <div class="text-[11px] text-theme-muted">{{ $user->email }}</div>
                                     </div>
                                 </div>
                             </td>
@@ -284,27 +299,27 @@ new #[Layout('layouts.app')] class extends Component {
                                 @php $primaryUnit = $user->units->first(); @endphp
                                 @if($primaryUnit)
                                     <div class="mb-1">
-                                        <span class="text-sm font-bold text-theme-text">{{ $primaryUnit->nama_unit }}</span>
-                                        <span class="ml-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-widest bg-theme-body border border-theme-border text-theme-muted">Homebase</span>
+                                        <span class="text-xs font-bold">{{ $primaryUnit->nama_unit }}</span>
+                                        <span class="ml-1 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest bg-theme-body border border-theme-border text-theme-muted">Homebase</span>
                                     </div>
-                                    <div class="text-xs text-theme-muted mb-2 font-bold text-primary">
+                                    <div class="text-[10px] text-primary font-bold uppercase tracking-tight">
                                         {{ $positionsMap[$primaryUnit->pivot->position_id] ?? 'Tidak ada jabatan' }}
                                     </div>
                                 @endif
 
-                                <div class="flex flex-wrap gap-1.5 mt-2">
+                                <div class="flex flex-wrap gap-1 mt-2">
                                     @foreach($availableUnits->where('kepala_unit_id', $user->id) as $hUnit)
-                                        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[9px] font-bold uppercase bg-blue-50 text-blue-600 border border-blue-100">
-                                            Kepala {{ $hUnit->kode_unit ?? $hUnit->nama_unit }}
+                                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 text-[9px] font-bold uppercase">
+                                            Kepala {{ $hUnit->kode_unit ?? 'Unit' }}
                                         </span>
                                     @endforeach
                                 </div>
                             </td>
 
                             <td class="px-6 py-4 align-top">
-                                <div class="flex flex-wrap gap-1.5">
+                                <div class="flex flex-wrap gap-1">
                                     @forelse($user->roles as $role)
-                                        <span class="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase border {{ $role->name === 'Super Admin' ? 'bg-theme-text text-theme-surface border-theme-text' : 'bg-theme-body border-theme-border text-theme-text' }}">
+                                        <span class="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border {{ $role->name === 'Super Admin' ? 'bg-theme-text text-theme-surface border-theme-text text-white' : 'bg-theme-body border-theme-border' }}">
                                             {{ $role->name }}
                                         </span>
                                     @empty
@@ -344,10 +359,10 @@ new #[Layout('layouts.app')] class extends Component {
 
     <!-- MODAL CREATE -->
     @if($isCreateModalOpen)
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-theme-text/20 backdrop-blur-sm p-4 overflow-y-auto">
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-theme-text/20 backdrop-blur-sm p-4 overflow-y-auto" x-data>
             <div class="bg-theme-surface rounded-2xl border border-theme-border shadow-2xl w-full max-w-2xl my-auto">
                 <div class="px-6 py-4 border-b border-theme-border flex justify-between items-center bg-theme-body/50 rounded-t-2xl">
-                    <h3 class="text-lg font-bold text-theme-text">Tambah Pengguna Baru</h3>
+                    <h3 class="text-lg font-bold">Tambah Pengguna Baru</h3>
                     <button wire:click="$set('isCreateModalOpen', false)" class="text-theme-muted hover:text-red-500 transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
@@ -357,75 +372,70 @@ new #[Layout('layouts.app')] class extends Component {
                         <div>
                             <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Nama Lengkap</label>
                             <input type="text" wire:model="newName" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
-                            @error('newName') <span class="text-[10px] text-red-500">{{ $message }}</span> @enderror
+                            @error('newName') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Email Kampus</label>
                             <input type="email" wire:model="newEmail" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
-                            @error('newEmail') <span class="text-[10px] text-red-500">{{ $message }}</span> @enderror
+                            @error('newEmail') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                         </div>
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Password</label>
                             <input type="password" wire:model="newPassword" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
-                            @error('newPassword') <span class="text-[10px] text-red-500">{{ $message }}</span> @enderror
+                            @error('newPassword') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                         </div>
                     </div>
 
                     <div class="pt-4 border-t border-theme-border">
-                        <h4 class="text-xs font-bold text-theme-text mb-3 uppercase tracking-wider">Penempatan Utama</h4>
+                        <h4 class="text-xs font-bold mb-3 uppercase tracking-wider text-primary">Penempatan Utama</h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Unit Homebase</label>
                                 <select wire:model="newUnitId" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
                                     <option value="">-- Pilih Unit --</option>
-                                    @foreach($availableUnits as $unit)
-                                        <option value="{{ $unit->id }}">{{ $unit->nama_unit }}</option>
-                                    @endforeach
+                                    @foreach($availableUnits as $unit) <option value="{{ $unit->id }}">{{ $unit->nama_unit }}</option> @endforeach
                                 </select>
-                                @error('newUnitId') <span class="text-[10px] text-red-500">{{ $message }}</span> @enderror
+                                @error('newUnitId') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Jabatan Sistem</label>
                                 <select wire:model="newPositionId" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
                                     <option value="">-- Pilih Jabatan --</option>
-                                    @foreach($availablePositions as $pos)
-                                        <option value="{{ $pos->id }}">{{ $pos->nama_jabatan }}</option>
-                                    @endforeach
+                                    @foreach($availablePositions as $pos) <option value="{{ $pos->id }}">{{ $pos->nama_jabatan }}</option> @endforeach
                                 </select>
-                                @error('newPositionId') <span class="text-[10px] text-red-500">{{ $message }}</span> @enderror
+                                @error('newPositionId') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                             </div>
                         </div>
                     </div>
 
                     <div>
-                        <div class="mb-3">
-                            <h4 class="text-xs font-bold text-theme-text uppercase tracking-wider">Peran Sistem Tambahan</h4>
-                            <p class="text-[10px] text-theme-muted mt-0.5">Pilih role manual (misal: Super Admin). Role dari Jabatan akan otomatis diberikan oleh sistem.</p>
-                        </div>
+                        <h4 class="text-xs font-bold mb-2 uppercase tracking-wider text-primary">Peran Sistem Tambahan</h4>
                         <div class="flex flex-wrap gap-2">
                             @foreach($availableRoles as $role)
-                                <label class="flex items-center gap-2 px-3 py-2 border border-theme-border rounded-xl cursor-pointer hover:bg-theme-body/50">
-                                    <input type="checkbox" wire:model="newRoles" value="{{ $role->name }}" class="rounded text-primary focus:ring-primary border-theme-border">
-                                    <span class="text-[10px] font-bold uppercase text-theme-text">{{ $role->name }}</span>
+                                <label wire:key="role-create-{{ $role->id }}" class="flex items-center gap-2 px-3 py-2 border border-theme-border rounded-xl cursor-pointer hover:bg-theme-body/50">
+                                    <input type="checkbox" wire:model="newRoles" value="{{ $role->name }}" class="rounded text-primary focus:ring-primary">
+                                    <span class="text-[10px] font-bold uppercase">{{ $role->name }}</span>
                                 </label>
                             @endforeach
                         </div>
+                        @error('newRoles') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold text-theme-text mb-3 uppercase tracking-wider">Amanah Struktural (Kepala)</h4>
+                        <h4 class="text-xs font-bold mb-2 uppercase tracking-wider text-primary">Amanah Struktural (Kepala)</h4>
                         <div class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 bg-theme-body/20 rounded-xl border border-theme-border">
                             @foreach($availableUnits as $unit)
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" wire:model="headedUnitIds" value="{{ $unit->id }}" class="rounded text-primary focus:ring-primary border-theme-border">
-                                    <span class="text-[10px] text-theme-text font-medium">{{ $unit->kode_unit ?? $unit->nama_unit }}</span>
+                                <label wire:key="headed-create-{{ $unit->id }}" class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" wire:model="headedUnitIds" value="{{ $unit->id }}" class="rounded text-primary focus:ring-primary">
+                                    <span class="text-[10px] font-medium">{{ $unit->kode_unit ?? $unit->nama_unit }}</span>
                                 </label>
                             @endforeach
                         </div>
+                        @error('headedUnitIds') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                     </div>
 
                     <div class="flex justify-end gap-3 pt-4 border-t border-theme-border">
-                        <button type="button" wire:click="$set('isCreateModalOpen', false)" class="text-sm font-bold text-theme-muted hover:text-theme-text">Batal</button>
+                        <button type="button" wire:click="$set('isCreateModalOpen', false)" class="text-sm font-bold text-theme-muted hover:text-theme-text transition-colors">Batal</button>
                         <button type="submit" class="bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20">Simpan User</button>
                     </div>
                 </form>
@@ -435,10 +445,10 @@ new #[Layout('layouts.app')] class extends Component {
 
     <!-- MODAL EDIT -->
     @if($isEditModalOpen)
-        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-theme-text/20 backdrop-blur-sm p-4 overflow-y-auto">
+        <div class="fixed inset-0 z-[100] flex items-center justify-center bg-theme-text/20 backdrop-blur-sm p-4 overflow-y-auto" x-data>
             <div class="bg-theme-surface rounded-2xl border border-theme-border shadow-2xl w-full max-w-2xl my-auto">
                 <div class="px-6 py-4 border-b border-theme-border flex justify-between items-center bg-theme-body/50 rounded-t-2xl">
-                    <h3 class="text-lg font-bold text-theme-text">Edit Data Pengguna</h3>
+                    <h3 class="text-lg font-bold">Edit Data Pengguna</h3>
                     <button wire:click="$set('isEditModalOpen', false)" class="text-theme-muted hover:text-red-500 transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
@@ -448,68 +458,70 @@ new #[Layout('layouts.app')] class extends Component {
                         <div>
                             <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Nama Lengkap</label>
                             <input type="text" wire:model="editName" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
+                            @error('editName') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Email Kampus</label>
                             <input type="email" wire:model="editEmail" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
+                            @error('editEmail') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                         </div>
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Password Baru (Opsional)</label>
                             <input type="password" wire:model="editPassword" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
+                            @error('editPassword') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                         </div>
                     </div>
 
                     <div class="pt-4 border-t border-theme-border">
+                        <h4 class="text-xs font-bold mb-3 uppercase tracking-wider text-primary">Penempatan Utama</h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Unit Homebase</label>
                                 <select wire:model="editUnitId" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
-                                    @foreach($availableUnits as $unit)
-                                        <option value="{{ $unit->id }}">{{ $unit->nama_unit }}</option>
-                                    @endforeach
+                                    <option value="">-- Pilih Unit --</option>
+                                    @foreach($availableUnits as $unit) <option value="{{ $unit->id }}">{{ $unit->nama_unit }}</option> @endforeach
                                 </select>
+                                @error('editUnitId') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-theme-muted uppercase mb-1">Jabatan Sistem</label>
                                 <select wire:model="editPositionId" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary bg-theme-body/30">
                                     <option value="">-- Pilih Jabatan --</option>
-                                    @foreach($availablePositions as $pos)
-                                        <option value="{{ $pos->id }}">{{ $pos->nama_jabatan }}</option>
-                                    @endforeach
+                                    @foreach($availablePositions as $pos) <option value="{{ $pos->id }}">{{ $pos->nama_jabatan }}</option> @endforeach
                                 </select>
+                                @error('editPositionId') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                             </div>
                         </div>
                     </div>
 
                     <div>
-                        <div class="mb-3">
-                            <h4 class="text-xs font-bold text-theme-text uppercase tracking-wider">Peran Sistem Tambahan</h4>
-                            <p class="text-[10px] text-theme-muted mt-0.5">Role bawaan dari Jabatan mungkin terlihat tercentang di sini, namun jika dihapus centangnya, sistem akan mengembalikannya secara otomatis.</p>
-                        </div>
+                        <h4 class="text-xs font-bold mb-2 uppercase tracking-wider text-primary">Peran Sistem Tambahan</h4>
                         <div class="flex flex-wrap gap-2">
                             @foreach($availableRoles as $role)
-                                <label class="flex items-center gap-2 px-3 py-2 border border-theme-border rounded-xl cursor-pointer hover:bg-theme-body/50">
-                                    <input type="checkbox" wire:model="editRoles" value="{{ $role->name }}" class="rounded text-primary focus:ring-primary border-theme-border">
-                                    <span class="text-[10px] font-bold uppercase text-theme-text">{{ $role->name }}</span>
+                                <label wire:key="role-edit-{{ $role->id }}" class="flex items-center gap-2 px-3 py-2 border border-theme-border rounded-xl cursor-pointer hover:bg-theme-body/50">
+                                    <input type="checkbox" wire:model="editRoles" value="{{ $role->name }}" class="rounded text-primary focus:ring-primary">
+                                    <span class="text-[10px] font-bold uppercase">{{ $role->name }}</span>
                                 </label>
                             @endforeach
                         </div>
+                        @error('editRoles') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                     </div>
 
                     <div>
-                        <h4 class="text-xs font-bold text-theme-text mb-3 uppercase tracking-wider">Amanah Struktural (Kepala)</h4>
+                        <h4 class="text-xs font-bold mb-2 uppercase tracking-wider text-primary">Amanah Struktural (Kepala)</h4>
                         <div class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-3 bg-theme-body/20 rounded-xl border border-theme-border">
                             @foreach($availableUnits as $unit)
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" wire:model="headedUnitIds" value="{{ $unit->id }}" class="rounded text-primary focus:ring-primary border-theme-border">
-                                    <span class="text-[10px] text-theme-text font-medium">{{ $unit->kode_unit ?? $unit->nama_unit }}</span>
+                                <label wire:key="headed-edit-{{ $unit->id }}" class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" wire:model="headedUnitIds" value="{{ $unit->id }}" class="rounded text-primary focus:ring-primary">
+                                    <span class="text-[10px] font-medium">{{ $unit->kode_unit ?? $unit->nama_unit }}</span>
                                 </label>
                             @endforeach
                         </div>
+                        @error('headedUnitIds') <span class="text-[10px] text-red-500 mt-1 block">{{ $message }}</span> @enderror
                     </div>
 
                     <div class="flex justify-end gap-3 pt-4 border-t border-theme-border">
-                        <button type="button" wire:click="$set('isEditModalOpen', false)" class="text-sm font-bold text-theme-muted hover:text-theme-text">Batal</button>
+                        <button type="button" wire:click="$set('isEditModalOpen', false)" class="text-sm font-bold text-theme-muted hover:text-theme-text transition-colors">Batal</button>
                         <button type="submit" class="bg-primary text-white px-6 py-2 rounded-xl font-bold text-sm shadow-lg shadow-primary/20">Simpan Perubahan</button>
                     </div>
                 </form>
@@ -517,18 +529,18 @@ new #[Layout('layouts.app')] class extends Component {
         </div>
     @endif
 
-    <!-- MODAL DELETE -->
+    <!-- DELETE MODAL -->
     @if($isDeleteModalOpen)
-        <div class="fixed inset-0 z-[110] flex items-center justify-center bg-theme-text/20 backdrop-blur-sm p-4">
+        <div class="fixed inset-0 z-[110] flex items-center justify-center bg-theme-text/20 backdrop-blur-sm p-4 overflow-y-auto">
             <div class="bg-theme-surface rounded-3xl border border-theme-border shadow-2xl w-full max-w-sm p-6 text-center">
                 <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                 </div>
-                <h3 class="text-lg font-bold text-theme-text mb-2">Hapus Pengguna?</h3>
+                <h3 class="text-lg font-bold mb-2">Hapus Pengguna?</h3>
                 <p class="text-sm text-theme-muted mb-6">Akun akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.</p>
                 <div class="flex gap-3">
-                    <button wire:click="$set('isDeleteModalOpen', false)" class="flex-1 py-2 text-sm font-bold text-theme-muted bg-theme-body rounded-xl border border-theme-border">Batal</button>
-                    <button wire:click="deleteUser" class="flex-1 py-2 text-sm font-bold text-white bg-red-500 rounded-xl shadow-md">Ya, Hapus</button>
+                    <button wire:click="$set('isDeleteModalOpen', false)" class="flex-1 py-2 text-sm font-bold text-theme-muted bg-theme-body rounded-xl border border-theme-border transition-colors">Batal</button>
+                    <button wire:click="deleteUser" class="flex-1 py-2 text-sm font-bold text-white bg-red-500 rounded-xl shadow-md hover:bg-red-600 transition-colors">Ya, Hapus</button>
                 </div>
             </div>
         </div>

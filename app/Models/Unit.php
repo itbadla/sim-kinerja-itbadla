@@ -26,6 +26,7 @@ class Unit extends Model
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'unit_user')
+            ->using(UnitUser::class) // Menggunakan model pivot kustom
             ->withPivot('position_id', 'is_active') // Ganti jabatan_di_unit ke position_id
             ->withTimestamps();
     }

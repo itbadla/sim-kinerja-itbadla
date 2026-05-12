@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Builder;
-use App\Models\Position;
 use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\DB;
 
@@ -47,10 +46,13 @@ class User extends Authenticatable
         ];
     }
 
+    // =========================================================
+    // ACCESSOR
+    // =========================================================
+
     /**
-     * Accessor untuk Unit Tunggal (Homebase)
-     * Memungkinkan Anda memanggil $user->unit (tanpa s).
-     * Ini akan mengambil unit pertama dari daftar unit user.
+     * Accessor untuk Unit Utama (Homebase).
+     * Memungkinkan memanggil $user->unit untuk mendapatkan unit pertama.
      */
     protected function unit(): Attribute
     {
@@ -59,13 +61,18 @@ class User extends Authenticatable
         );
     }
 
+    // =========================================================
+    // RELASI
+    // =========================================================
+
     /**
-     * Relasi Utama ke Unit (Many-to-Many via unit_user).
-     * PERBAIKAN: Menggunakan position_id sesuai skema DB baru
+     * Relasi ke Unit Kerja melalui tabel pivot unit_user.
+     * Menggunakan model pivot kustom UnitUser untuk mendukung relasi jabatan.
      */
     public function units(): BelongsToMany
     {
         return $this->belongsToMany(Unit::class, 'unit_user')
+            ->using(UnitUser::class) // Menggunakan model pivot kustom
             ->withPivot('position_id', 'is_active')
             ->withTimestamps();
     }
@@ -78,56 +85,68 @@ class User extends Authenticatable
         return $this->hasMany(Unit::class, 'kepala_unit_id');
     }
 
-    /**
-     * Relasi ke pengajuan dana yang dibuat oleh User.
-     */
     public function fundSubmissions(): HasMany
     {
         return $this->hasMany(FundSubmission::class);
     }
 
-    /**
-     * Relasi ke logbook kinerja harian User.
-     */
     public function logbooks(): HasMany
     {
         return $this->hasMany(Logbook::class);
     }
 
+    // =========================================================
+    // LOGIKA CERDAS & SCOPE
+    // =========================================================
+
     /**
-     * Scope untuk mencari bawahan dari atasan tertentu.
+     * Scope untuk mencari bawahan (anggota unit yang dipimpin secara hirarki).
      */
     public function scopeBawahan(Builder $query, User $atasan)
     {
-        $unitIds = Unit::where('kepala_unit_id', $atasan->id)->get()->map(function($unit) {
+        // Ambil semua unit yang dipimpin beserta anak-anaknya secara rekursif
+        $unitIds = Unit::where('kepala_unit_id', $atasan->id)->get()->flatMap(function($unit) {
             return array_merge([$unit->id], $unit->getAllChildrenIds());
-        })->flatten()->unique()->toArray();
+        })->unique()->toArray();
 
         return $query->whereHas('units', function($q) use ($unitIds) {
             $q->whereIn('units.id', $unitIds);
-        })->where('users.id', '!=', $atasan->id); // Jangan tampilkan diri sendiri
+        })->where('users.id', '!=', $atasan->id); // Kecualikan diri sendiri
     }
 
+    /**
+     * Sinkronisasi Role Spatie berdasarkan Jabatan di tabel unit_user.
+     * Fungsi ini menggabungkan Role Bawaan Jabatan + Role Manual (seperti Super Admin).
+     */
     public function syncRolesFromPositions()
     {
-        // 1. Ambil semua ID jabatan yang sedang dipegang user dari pivot unit_user
-        $positionIds = DB::table('unit_user')
-            ->where('user_id', $this->id)
-            ->pluck('position_id');
+        // 1. Ambil ID Role dari semua jabatan yang sedang dipegang user di tabel pivot
+        $roleIdsFromPositions = DB::table('unit_user')
+            ->join('positions', 'unit_user.position_id', '=', 'positions.id')
+            ->where('unit_user.user_id', $this->id)
+            ->whereNotNull('positions.role_id')
+            ->pluck('positions.role_id')
+            ->toArray();
 
-        // 2. Ambil nama jabatan dari tabel positions
-        $positionNames = Position::whereIn('id', $positionIds)->pluck('nama_jabatan')->toArray();
+        // 2. Ambil nama role-role tersebut dari tabel Spatie roles
+        $rolesFromPositions = Role::whereIn('id', $roleIdsFromPositions)->pluck('name')->toArray();
 
-        // 3. Cocokkan: Ambil role yang benar-benar ada di database berdasarkan nama jabatan
-        $rolesFromPositions = Role::whereIn('name', $positionNames)->pluck('name')->toArray();
+        // 3. Ambil daftar semua nama role yang terikat dengan Master Jabatan mana pun
+        // Ini digunakan untuk membedakan mana role "jabatan" dan mana role "manual"
+        $allPositionRoleNames = Role::whereIn('id', function($query) {
+                $query->select('role_id')->from('positions')->whereNotNull('role_id');
+            })->pluck('name')->toArray();
 
-        // 4. Pertahankan role manual (misal: Super Admin, Admin) yang BUKAN berasal dari nama jabatan
-        $allPositionNames = Position::pluck('nama_jabatan')->toArray();
-        $manualRoles = $this->roles()->whereNotIn('name', $allPositionNames)->pluck('name')->toArray();
+        // 4. Identifikasi Role Manual yang sudah dimiliki user 
+        // (Role yang tidak ada di daftar Master Jabatan, misal: 'Super Admin', 'Panitia')
+        $manualRoles = $this->roles()
+            ->whereNotIn('name', $allPositionRoleNames)
+            ->pluck('name')
+            ->toArray();
 
-        // 5. Gabungkan role jabatan & role manual, lalu sinkronisasi (hapus duplikat jika ada)
+        // 5. Gabungkan keduanya dan sinkronisasi tanpa menghapus role manual
         $finalRoles = array_unique(array_merge($rolesFromPositions, $manualRoles));
         
-        $this->syncRoles($finalRoles);
+        return $this->syncRoles($finalRoles);
     }
 }

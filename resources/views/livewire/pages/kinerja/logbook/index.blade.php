@@ -13,7 +13,7 @@ new #[Layout('layouts.app')] class extends Component {
     use WithPagination, WithFileUploads;
 
     public $search = '';
-    public $selectedPeriodeId = ''; // Gunakan string kosong sebagai default fallback
+    public $selectedPeriodeId = ''; 
     
     // State Modal
     public $isCreateModalOpen = false;
@@ -22,6 +22,7 @@ new #[Layout('layouts.app')] class extends Component {
 
     // Form Properties
     public $logbookId;
+    public $unit_id = ''; // TAMBAHAN: Menyimpan konteks unit saat ini
     public $tanggal;
     public $jam_mulai;
     public $jam_selesai;
@@ -31,16 +32,20 @@ new #[Layout('layouts.app')] class extends Component {
     public $output;
     public $link_bukti;
     public $file_bukti;
-    public $existing_file; // Untuk menyimpan nama file lama saat edit
+    public $existing_file; 
 
     public function mount()
     {
-        // Set dropdown ke periode yang aktif saat ini secara default
-        // Menggunakan pencarian eksplisit is_current = true
         $currentPeriode = Periode::where('is_current', true)->first();
         
         if ($currentPeriode) {
             $this->selectedPeriodeId = $currentPeriode->id;
+        }
+
+        // Set default unit_id ke unit pertama yang dimiliki user
+        $userUnits = auth()->user()->units;
+        if ($userUnits->count() > 0) {
+            $this->unit_id = $userUnits->first()->id;
         }
     }
 
@@ -51,9 +56,14 @@ new #[Layout('layouts.app')] class extends Component {
 
     public function updatingSelectedPeriodeId()
     {
-        // Reset pencarian dan form jika user mengganti periode di dropdown
         $this->resetPage();
         $this->resetForm();
+    }
+
+    // Jika user mengganti konteks unit, reset pilihan prokernya agar tidak salah
+    public function updatingUnitId()
+    {
+        $this->work_program_id = '';
     }
 
     public function resetForm()
@@ -70,7 +80,12 @@ new #[Layout('layouts.app')] class extends Component {
         $this->file_bukti = null;
         $this->existing_file = null;
         $this->resetValidation();
-        // Catatan: selectedPeriodeId sengaja TIDAK di-reset agar dropdown tidak melompat kembali
+
+        // Kembalikan unit ke default jika form ditutup
+        $userUnits = auth()->user()->units;
+        if ($userUnits->count() > 0) {
+            $this->unit_id = $userUnits->first()->id;
+        }
     }
 
     public function openCreateModal()
@@ -84,13 +99,13 @@ new #[Layout('layouts.app')] class extends Component {
         $this->resetValidation();
         $logbook = Logbook::findOrFail($id);
 
-        // Cegah edit jika status sudah disetujui
         if ($logbook->status === 'approved') {
             session()->flash('error', 'Logbook yang sudah disetujui tidak dapat diubah.');
             return;
         }
 
         $this->logbookId = $logbook->id;
+        $this->unit_id = $logbook->unit_id; // Set form ke unit asal saat logbook dibuat
         $this->tanggal = $logbook->tanggal->format('Y-m-d');
         $this->jam_mulai = $logbook->jam_mulai->format('H:i');
         $this->jam_selesai = $logbook->jam_selesai->format('H:i');
@@ -121,13 +136,13 @@ new #[Layout('layouts.app')] class extends Component {
     {
         $periode = Periode::find($this->selectedPeriodeId);
 
-        // Keamanan: Pastikan periode tersedia dan belum ditutup
         if (!$periode || $periode->status === 'closed') {
             session()->flash('error', 'Gagal menyimpan! Periode ini sudah dikunci atau tidak tersedia.');
             return;
         }
 
         $validated = $this->validate([
+            'unit_id' => 'required|exists:units,id',
             'tanggal' => 'required|date',
             'jam_mulai' => 'required',
             'jam_selesai' => 'required|after:jam_mulai',
@@ -136,20 +151,18 @@ new #[Layout('layouts.app')] class extends Component {
             'deskripsi_aktivitas' => 'required|string|max:1000',
             'output' => 'nullable|string|max:255',
             'link_bukti' => 'nullable|url',
-            'file_bukti' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120', // Maks 5MB
+            'file_bukti' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
-        // Upload File jika ada
         $filePath = null;
         if ($this->file_bukti) {
             $filePath = $this->file_bukti->store('logbook_evidences', 'public');
         }
 
-        // Simpan Data dengan Injeksi Otomatis
         Logbook::create([
             'user_id' => auth()->id(),
-            'unit_id' => auth()->user()->unit_id,
-            'periode_id' => $periode->id, // INJEKSI BERDASARKAN DROPDOWN
+            'unit_id' => $this->unit_id, // Gunakan Unit yang DIPILIH pengguna
+            'periode_id' => $periode->id,
             'tanggal' => $this->tanggal,
             'jam_mulai' => $this->jam_mulai,
             'jam_selesai' => $this->jam_selesai,
@@ -159,7 +172,7 @@ new #[Layout('layouts.app')] class extends Component {
             'output' => $this->output,
             'link_bukti' => $this->link_bukti,
             'file_bukti' => $filePath,
-            'status' => 'pending', // Otomatis masuk antrean verifikasi
+            'status' => 'pending', 
         ]);
 
         $this->closeModal();
@@ -171,6 +184,7 @@ new #[Layout('layouts.app')] class extends Component {
         $logbook = Logbook::where('id', $this->logbookId)->where('user_id', auth()->id())->firstOrFail();
 
         $validated = $this->validate([
+            'unit_id' => 'required|exists:units,id',
             'tanggal' => 'required|date',
             'jam_mulai' => 'required',
             'jam_selesai' => 'required|after:jam_mulai',
@@ -184,7 +198,6 @@ new #[Layout('layouts.app')] class extends Component {
 
         $filePath = $logbook->file_bukti;
         
-        // Handle upload file baru dan hapus yang lama
         if ($this->file_bukti) {
             if ($filePath && Storage::disk('public')->exists($filePath)) {
                 Storage::disk('public')->delete($filePath);
@@ -193,6 +206,7 @@ new #[Layout('layouts.app')] class extends Component {
         }
 
         $logbook->update([
+            'unit_id' => $this->unit_id,
             'tanggal' => $this->tanggal,
             'jam_mulai' => $this->jam_mulai,
             'jam_selesai' => $this->jam_selesai,
@@ -202,7 +216,7 @@ new #[Layout('layouts.app')] class extends Component {
             'output' => $this->output,
             'link_bukti' => $this->link_bukti,
             'file_bukti' => $filePath,
-            'status' => 'pending', // Jika direvisi (rejected), status kembali pending
+            'status' => 'pending', 
         ]);
 
         $this->closeModal();
@@ -235,11 +249,11 @@ new #[Layout('layouts.app')] class extends Component {
     {
         $allPeriodes = Periode::orderBy('tanggal_mulai', 'desc')->get();
         $selectedPeriode = Periode::find($this->selectedPeriodeId);
+        $userUnits = auth()->user()->units; // Ambil semua unit user
         
-        $logbooks = collect(); // Default kosong
+        $logbooks = collect(); 
         $workPrograms = collect();
 
-        // Pastikan hanya mencari data jika ada periode yang dipilih
         if ($selectedPeriode) {
             $query = Logbook::with(['workProgram', 'verifikator'])
                             ->where('user_id', auth()->id())
@@ -254,11 +268,13 @@ new #[Layout('layouts.app')] class extends Component {
 
             $logbooks = $query->orderBy('tanggal', 'desc')->orderBy('jam_mulai', 'desc')->paginate(15);
             
-            // List Proker untuk pilihan di Form (Hanya proker milik unit user tsb di periode terpilih)
-            $workPrograms = WorkProgram::where('unit_id', auth()->user()->unit_id)
-                                       ->where('periode_id', $selectedPeriode->id)
-                                       ->where('status', 'disetujui') // Hanya proker yang valid
-                                       ->get();
+            // List Proker bergantung pada Unit ID yang DIPILIH user di dropdown
+            if ($this->unit_id) {
+                $workPrograms = WorkProgram::where('unit_id', $this->unit_id)
+                                           ->where('periode_id', $selectedPeriode->id)
+                                           ->where('status', 'disetujui')
+                                           ->get();
+            }
         }
 
         return [
@@ -266,6 +282,7 @@ new #[Layout('layouts.app')] class extends Component {
             'selectedPeriode' => $selectedPeriode,
             'logbooks' => $logbooks,
             'availableWorkPrograms' => $workPrograms,
+            'userUnits' => $userUnits, // Kirim daftar unit ke tampilan
         ];
     }
 }; ?>
@@ -394,10 +411,18 @@ new #[Layout('layouts.app')] class extends Component {
                     <!-- Sisi Tengah: Konten Aktivitas -->
                     <div class="flex-1 space-y-3">
                         <div>
-                            <div class="flex items-center gap-2 mb-1">
-                                <span class="text-[10px] font-bold px-2 py-0.5 rounded {{ $log->kategori === 'tugas_utama' ? 'bg-primary/10 text-primary' : 'bg-purple-100 text-purple-700' }} uppercase">
+                            <div class="flex flex-wrap items-center gap-2 mb-1.5">
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded {{ $log->kategori === 'tugas_utama' ? 'bg-primary/10 text-primary' : 'bg-purple-100 text-purple-700' }} uppercase border border-current/20">
                                     {{ str_replace('_', ' ', $log->kategori) }}
                                 </span>
+                                
+                                <!-- Tambahan Tampilan Unit -->
+                                @if($log->unit)
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200 uppercase">
+                                        {{ $log->unit->nama_unit }}
+                                    </span>
+                                @endif
+                                
                                 @if($log->workProgram)
                                     <span class="text-[10px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded truncate max-w-[200px]" title="{{ $log->workProgram->nama_proker }}">
                                         Proker: {{ $log->workProgram->nama_proker }}
@@ -487,6 +512,24 @@ new #[Layout('layouts.app')] class extends Component {
                 
                 <form wire:submit.prevent="{{ $isEditModalOpen ? 'update' : 'store' }}" class="p-6">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
+                        
+                        <!-- Pilihan Konteks Unit (Khusus untuk Rangkap Jabatan) -->
+                        @if($userUnits->count() > 1)
+                            <div class="md:col-span-3 bg-blue-50 border border-blue-200 p-4 rounded-xl mb-2">
+                                <label class="block text-xs font-bold text-blue-800 uppercase mb-2 flex items-center gap-1.5">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                    Konteks Pelaporan (Unit Anda) <span class="text-red-500">*</span>
+                                </label>
+                                <select wire:model.live="unit_id" class="w-full border-blue-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm font-bold text-blue-900">
+                                    @foreach($userUnits as $u)
+                                        <option value="{{ $u->id }}">Sebagai personil di: {{ $u->nama_unit }}</option>
+                                    @endforeach
+                                </select>
+                                <p class="text-[10px] text-blue-600 mt-1.5">Pilihan ini menentukan siapa Atasan (Verifikator) yang akan memeriksa logbook Anda.</p>
+                                @error('unit_id') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
+                            </div>
+                        @endif
+
                         <div class="md:col-span-1 space-y-5">
                             <div>
                                 <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Tanggal</label>
@@ -518,13 +561,13 @@ new #[Layout('layouts.app')] class extends Component {
                         <div class="md:col-span-2 space-y-5">
                             <div>
                                 <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Terkait Program Kerja (Opsional)</label>
-                                <select wire:model="work_program_id" class="w-full border-gray-300 rounded-xl text-sm focus:ring-primary focus:border-primary">
+                                <select wire:model="work_program_id" class="w-full border-gray-300 rounded-xl text-sm focus:ring-primary focus:border-primary {{ $availableWorkPrograms->count() === 0 ? 'bg-gray-100 text-gray-400' : '' }}">
                                     <option value="">-- Tidak Terkait Proker Khusus --</option>
                                     @foreach($availableWorkPrograms ?? [] as $wp)
                                         <option value="{{ $wp->id }}">{{ $wp->nama_proker }}</option>
                                     @endforeach
                                 </select>
-                                <p class="text-[10px] text-gray-500 mt-1">Hanya menampilkan Proker yang telah disetujui pada periode berjalan.</p>
+                                <p class="text-[10px] text-gray-500 mt-1">Hanya menampilkan Proker yang telah disetujui pada unit dan periode terpilih.</p>
                                 @error('work_program_id') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
                             </div>
 

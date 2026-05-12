@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('unit_id')->constrained('units')->cascadeOnDelete();
             
-            $table->foreignId('position_id')->nullable()->constrained('positions')->cascadeOnDelete();
+            $table->foreignId('position_id')->nullable()->constrained('positions')->restrictOnDelete();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             

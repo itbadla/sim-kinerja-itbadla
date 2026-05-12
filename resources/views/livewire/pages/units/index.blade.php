@@ -18,7 +18,6 @@ new #[Layout('layouts.app')] class extends Component {
     public $isCreateModalOpen = false;
     public $isEditModalOpen = false;
     public $isDeleteModalOpen = false;
-    public $isManageMembersOpen = false; // State untuk Kelola Staf
 
     // Form Properties (Unit)
     public $unitId;
@@ -26,11 +25,6 @@ new #[Layout('layouts.app')] class extends Component {
     public $nama_unit;
     public $parent_id;
     public $kepala_unit_id;
-    
-    // Form Properties (Members Control)
-    public $selectedUnitForMembers = null;
-    public $newMemberId = '';
-    public $newMemberPositionId = '';
 
     public function updatingSearch()
     {
@@ -120,62 +114,11 @@ new #[Layout('layouts.app')] class extends Component {
         session()->flash('message', 'Unit dihapus.');
     }
 
-    // --- STAFF/MEMBER CONTROLS ---
-
-    public function openManageMembers($id)
-    {
-        $this->selectedUnitForMembers = Unit::with('users')->findOrFail($id);
-        $this->isManageMembersOpen = true;
-    }
-
-    public function attachMember()
-    {
-        $this->validate([
-            'newMemberId' => 'required|exists:users,id',
-            'newMemberPositionId' => 'required|exists:positions,id',
-        ]);
-
-        // Cegah duplikasi di unit yang sama
-        if ($this->selectedUnitForMembers->users()->where('user_id', $this->newMemberId)->exists()) {
-            $this->addError('newMemberId', 'User ini sudah terdaftar di unit ini.');
-            return;
-        }
-
-        $this->selectedUnitForMembers->users()->attach($this->newMemberId, [
-            'position_id' => $this->newMemberPositionId,
-            'is_active' => true
-        ]);
-
-        // [DIPERBAIKI] Panggil sinkronisasi role otomatis
-        $user = User::find($this->newMemberId);
-        if (method_exists($user, 'syncRolesFromPositions')) {
-            $user->syncRolesFromPositions();
-        }
-
-        $this->newMemberId = '';
-        $this->newMemberPositionId = '';
-        $this->selectedUnitForMembers->load('users');
-    }
-
-    public function detachMember($userId)
-    {
-        $this->selectedUnitForMembers->users()->detach($userId);
-        
-        // [DIPERBAIKI] Panggil sinkronisasi role otomatis setelah dicabut
-        $user = User::find($userId);
-        if (method_exists($user, 'syncRolesFromPositions')) {
-            $user->syncRolesFromPositions();
-        }
-
-        $this->selectedUnitForMembers->load('users');
-    }
-
     public function closeModal()
     {
         $this->isCreateModalOpen = false;
         $this->isEditModalOpen = false;
         $this->isDeleteModalOpen = false;
-        $this->isManageMembersOpen = false;
         $this->resetForm();
     }
 
@@ -187,10 +130,10 @@ new #[Layout('layouts.app')] class extends Component {
             'children.kepalaUnit', 
             'children.children' => fn($q) => $q->withCount('users'),
             'children.children.kepalaUnit',
-            // Tambahkan relasi Tingkat 4
+            // Relasi Tingkat 4
             'children.children.children' => fn($q) => $q->withCount('users'),
             'children.children.children.kepalaUnit',
-            // Tambahkan relasi Tingkat 5
+            // Relasi Tingkat 5
             'children.children.children.children' => fn($q) => $q->withCount('users'),
             'children.children.children.children.kepalaUnit',
         ]);
@@ -269,10 +212,11 @@ new #[Layout('layouts.app')] class extends Component {
                     </div>
                     
                     <div class="flex items-center gap-2 sm:self-center">
-                        <button wire:click="openManageMembers({{ $unit->id }})" class="px-3 py-1.5 bg-theme-body border border-theme-border rounded-lg text-xs font-bold text-theme-text hover:text-primary transition-colors flex items-center gap-1.5 shadow-sm">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-                            {{ $unit->users_count }} Staf
-                        </button>
+                        <!-- TOMBOL DETAIL (GANTI STAF) -->
+                        <a href="{{ route('admin.units.show', $unit->id) }}" wire:navigate class="px-3 py-1.5 bg-theme-body border border-theme-border rounded-lg text-xs font-bold text-theme-text hover:text-primary transition-colors flex items-center gap-1.5 shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            Detail & {{ $unit->users_count }} Staf
+                        </a>
                         <div class="w-px h-6 bg-theme-border mx-1"></div>
                         <button wire:click="openCreateModal({{ $unit->id }})" class="p-2 text-theme-muted hover:text-primary transition-colors" title="Tambah Sub-Unit"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
                         <button wire:click="openEditModal({{ $unit->id }})" class="p-2 text-theme-muted hover:text-primary transition-colors" title="Edit Unit"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
@@ -290,9 +234,9 @@ new #[Layout('layouts.app')] class extends Component {
                                     <p class="text-xs text-theme-muted mt-0.5">{{ $child->kode_unit }} • Pimpinan: <span class="font-medium text-theme-text">{{ $child->kepalaUnit->name ?? 'Belum' }}</span></p>
                                 </div>
                                 <div class="flex items-center gap-2">
-                                    <button wire:click="openManageMembers({{ $child->id }})" class="px-2 py-1 bg-theme-surface border border-theme-border rounded text-xs font-semibold text-theme-muted hover:text-primary transition-colors">
+                                    <a href="{{ route('admin.units.show', $child->id) }}" wire:navigate class="px-2 py-1 bg-theme-surface border border-theme-border rounded text-xs font-semibold text-theme-muted hover:text-primary transition-colors">
                                         {{ $child->users_count }} Staf
-                                    </button>
+                                    </a>
                                     <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                                         <button wire:click="openCreateModal({{ $child->id }})" class="p-1.5 text-theme-muted hover:text-primary"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
                                         <button wire:click="openEditModal({{ $child->id }})" class="p-1.5 text-theme-muted hover:text-primary"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
@@ -314,7 +258,7 @@ new #[Layout('layouts.app')] class extends Component {
                                                 </div>
                                             </div>
                                             <div class="flex items-center gap-2">
-                                                <button wire:click="openManageMembers({{ $gc->id }})" class="text-[10px] font-semibold text-primary hover:underline">{{ $gc->users_count }} Staf</button>
+                                                <a href="{{ route('admin.units.show', $gc->id) }}" wire:navigate class="text-[10px] font-semibold text-primary hover:underline">{{ $gc->users_count }} Staf</a>
                                                 <div class="opacity-0 group-hover/mini:opacity-100 transition-opacity flex items-center">
                                                     <button wire:click="openCreateModal({{ $gc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
                                                     <button wire:click="openEditModal({{ $gc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
@@ -336,7 +280,7 @@ new #[Layout('layouts.app')] class extends Component {
                                                             </div>
                                                         </div>
                                                         <div class="flex items-center gap-2">
-                                                            <button wire:click="openManageMembers({{ $ggc->id }})" class="text-[9px] font-semibold text-primary hover:underline">{{ $ggc->users_count }} Staf</button>
+                                                            <a href="{{ route('admin.units.show', $ggc->id) }}" wire:navigate class="text-[9px] font-semibold text-primary hover:underline">{{ $ggc->users_count }} Staf</a>
                                                             <div class="opacity-0 group-hover/micro:opacity-100 transition-opacity flex items-center">
                                                                 <button wire:click="openCreateModal({{ $ggc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg></button>
                                                                 <button wire:click="openEditModal({{ $ggc->id }})" class="p-1 text-theme-muted hover:text-primary"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
@@ -358,7 +302,7 @@ new #[Layout('layouts.app')] class extends Component {
                                                                         </div>
                                                                     </div>
                                                                     <div class="flex items-center gap-1.5">
-                                                                        <button wire:click="openManageMembers({{ $gggc->id }})" class="text-[8px] font-semibold text-primary hover:underline">{{ $gggc->users_count }} Staf</button>
+                                                                        <a href="{{ route('admin.units.show', $gggc->id) }}" wire:navigate class="text-[8px] font-semibold text-primary hover:underline">{{ $gggc->users_count }} Staf</a>
                                                                         <div class="opacity-0 group-hover/nano:opacity-100 transition-opacity flex items-center">
                                                                             <button wire:click="openEditModal({{ $gggc->id }})" class="p-0.5 text-theme-muted hover:text-primary"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
                                                                             <button wire:click="confirmDelete({{ $gggc->id }})" class="p-0.5 text-theme-muted hover:text-red-500"><svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
@@ -443,98 +387,6 @@ new #[Layout('layouts.app')] class extends Component {
                         <button type="submit" class="bg-primary hover:bg-primary-hover text-white px-6 py-2 rounded-xl font-bold text-sm shadow-sm shadow-primary/20 transition-all">Simpan Unit</button>
                     </div>
                 </form>
-            </div>
-        </div>
-    @endif
-
-    <!-- MODAL MANAGE MEMBERS (KONTROL STAF) -->
-    @if($isManageMembersOpen)
-        <div class="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto" x-data>
-            <div class="fixed inset-0 bg-theme-text/40 backdrop-blur-sm transition-opacity" wire:click="closeModal"></div>
-            
-            <div class="relative bg-theme-surface w-full max-w-4xl rounded-2xl border border-theme-border shadow-xl overflow-hidden my-auto">
-                <div class="px-6 py-4 border-b border-theme-border bg-theme-body/30 flex justify-between items-center">
-                    <div>
-                        <h3 class="text-lg font-bold text-theme-text">{{ $selectedUnitForMembers->nama_unit }}</h3>
-                        <p class="text-xs text-theme-muted">Pengaturan penempatan staf dan pendelegasian jabatan.</p>
-                    </div>
-                    <button type="button" wire:click="closeModal" class="text-theme-muted hover:text-red-500 transition-colors">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
-                </div>
-                
-                <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <!-- Kiri: Tambah Staf -->
-                    <div class="md:col-span-1 space-y-4 bg-theme-body/30 p-5 rounded-xl border border-theme-border">
-                        <h4 class="text-sm font-bold text-theme-text">Tambah Personil</h4>
-                        <form wire:submit.prevent="attachMember" class="space-y-4">
-                            <div>
-                                <label class="block text-xs font-bold text-theme-muted uppercase mb-1">Pilih Pengguna</label>
-                                <select wire:model="newMemberId" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary focus:border-primary bg-theme-surface">
-                                    <option value="">-- Pilih User --</option>
-                                    @foreach($availableUsers as $au)
-                                        <option value="{{ $au->id }}">{{ $au->name }}</option>
-                                    @endforeach
-                                </select>
-                                @error('newMemberId') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold text-theme-muted uppercase mb-1">Pilih Jabatan</label>
-                                <select wire:model="newMemberPositionId" class="w-full border-theme-border rounded-xl text-sm focus:ring-primary focus:border-primary bg-theme-surface">
-                                    <option value="">-- Pilih Jabatan --</option>
-                                    @foreach($availablePositions as $pos)
-                                        <option value="{{ $pos->id }}">{{ $pos->nama_jabatan }}</option>
-                                    @endforeach
-                                </select>
-                                @error('newMemberPositionId') <span class="text-xs text-red-500 mt-1 block">{{ $message }}</span> @enderror
-                            </div>
-                            <button type="submit" class="w-full bg-theme-text text-theme-surface py-2 rounded-xl text-sm font-bold hover:bg-primary hover:text-white transition-all">
-                                Masukkan ke Unit
-                            </button>
-                        </form>
-                    </div>
-
-                    <!-- Kanan: Daftar Staf -->
-                    <div class="md:col-span-2 space-y-3">
-                        <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-bold text-theme-text">Daftar Personil Aktif</h4>
-                            <span class="text-xs font-bold bg-theme-body px-2 py-1 rounded border border-theme-border">{{ $selectedUnitForMembers->users->count() }} Orang</span>
-                        </div>
-                        
-                        <div class="max-h-[350px] overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                            @forelse($selectedUnitForMembers->users as $member)
-                                <div class="flex items-center justify-between p-3 bg-theme-surface border border-theme-border rounded-xl hover:border-primary/40 transition-colors">
-                                    <div class="flex items-center gap-3 overflow-hidden">
-                                        <div class="w-10 h-10 rounded-full bg-theme-body border border-theme-border flex items-center justify-center font-bold text-primary uppercase shrink-0">
-                                            {{ substr($member->name, 0, 1) }}
-                                        </div>
-                                        <div class="truncate">
-                                            <h5 class="text-sm font-bold text-theme-text truncate">{{ $member->name }}</h5>
-                                            <div class="flex items-center gap-2 mt-0.5">
-                                                <span class="text-[10px] font-bold text-primary px-1.5 py-0.5 bg-primary/10 rounded uppercase">
-                                                    {{ $positionsMap[$member->pivot->position_id] ?? 'Tanpa Jabatan' }}
-                                                </span>
-                                                <span class="text-xs text-theme-muted truncate">{{ $member->email }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button 
-                                        onclick="confirm('Yakin ingin melepas personil ini dari unit?') || event.stopImmediatePropagation()"
-                                        wire:click="detachMember({{ $member->id }})" 
-                                        class="p-2 text-theme-muted hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors ml-2 shrink-0"
-                                        title="Keluarkan dari unit"
-                                    >
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                                    </button>
-                                </div>
-                            @empty
-                                <div class="py-12 text-center border border-dashed border-theme-border rounded-xl text-sm text-theme-muted italic">
-                                    Belum ada personil yang ditugaskan.
-                                </div>
-                            @endforelse
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     @endif
