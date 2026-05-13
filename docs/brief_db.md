@@ -703,3 +703,80 @@ public function up(): void
         });
 
     }
+
+<!-- BKD -->
+
+public function up(): void
+    {
+        Schema::create('bkd_activities', function (Blueprint $table) {
+            $table->id();
+            // Relasi ke tabel existing
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+            $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
+            
+            // KUNCI INTEGRASI: Menyimpan ID SISTER agar tidak duplikat saat ditarik/dikirim
+            $table->string('sister_id')->nullable()->unique();
+            
+            // Detail Kinerja
+            $table->enum('kategori_tridharma', ['pendidikan', 'penelitian', 'pengabdian', 'penunjang']);
+            $table->string('rubrik_kegiatan_id')->nullable(); // ID Rubrik BKD dari PO BKD / SISTER
+            $table->string('judul_kegiatan');
+            $table->date('tanggal_mulai')->nullable();
+            $table->date('tanggal_selesai')->nullable();
+            $table->text('deskripsi')->nullable();
+            $table->float('sks_beban')->default(0); // Bobot SKS
+            
+            // Status Sinkronisasi SISTER
+            $table->enum('sync_status', ['un-synced', 'synced', 'failed'])->default('un-synced');
+            $table->timestamp('last_synced_at')->nullable();
+            
+            // Status Verifikasi Internal (Oleh Asesor BKD Kampus)
+            $table->enum('status_internal', ['draft', 'pending', 'approved', 'rejected'])->default('draft');
+            $table->foreignId('asesor_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->text('catatan_asesor')->nullable();
+            
+            $table->timestamps();
+            $table->softDeletes();
+        });
+    }
+
+
+    public function up(): void
+    {
+        Schema::create('bkd_members', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('bkd_activity_id')->constrained('bkd_activities')->cascadeOnDelete();
+            
+            // Jika anggota adalah dosen internal ITBADLA
+            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
+            
+            // Jika anggota adalah orang luar/mahasiswa (tidak punya akun)
+            $table->string('nama_anggota')->nullable(); 
+            
+            // Peran dalam kegiatan (Sesuai PO BKD)
+            $table->enum('peran', ['ketua', 'anggota', 'penulis_utama', 'penulis_korespondensi']);
+            $table->boolean('is_aktif')->default(true);
+            
+            $table->timestamps();
+        });
+    }
+
+
+    public function up(): void
+    {
+        Schema::create('bkd_documents', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('bkd_activity_id')->constrained('bkd_activities')->cascadeOnDelete();
+            
+            $table->string('nama_dokumen'); // Contoh: "Surat Tugas Mengajar"
+            $table->string('jenis_dokumen')->nullable(); // Kategori dokumen versi SISTER
+            
+            $table->string('file_path')->nullable(); // Upload file ke server lokal
+            $table->string('tautan_luar')->nullable(); // Link Jurnal / Google Drive
+            
+            // ID Dokumen SISTER jika file ini sukses didorong ke server SISTER
+            $table->string('sister_doc_id')->nullable()->unique();
+            
+            $table->timestamps();
+        });
+    }

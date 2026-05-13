@@ -149,4 +149,9 @@ class User extends Authenticatable
         
         return $this->syncRoles($finalRoles);
     }
+
+    public function bkdActivities()
+    {
+        return $this->hasMany(BkdActivity::class, 'user_id');
+    }
 }

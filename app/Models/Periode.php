@@ -56,4 +56,9 @@ class Periode extends Model
     {
         return $this->hasMany(PerformanceIndicator::class, 'periode_id');
     }
+
+    public function bkdActivities()
+    {
+        return $this->hasMany(BkdActivity::class, 'periode_id');
+    }
 }

@@ -77,6 +77,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('/team', 'pages.kinerja.team.index')
             ->name('team.index')
             ->middleware('can:team-saya');
+        
+        // BKD
+        Volt::route('/bkd', 'pages.kinerja.bkd.index')->name('bkd.index')->middleware('can:kinerja-bkd');
     });
 
 
