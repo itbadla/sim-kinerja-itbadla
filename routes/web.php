@@ -40,6 +40,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('/monitoring', 'pages.monitoring.index')
         ->name('monitoring.index')
         ->middleware('can:monitoring'); 
+    
+    // Buka routes/web.php, tambahkan ini di dalam middleware auth:
+    Volt::route('/peta-strategis', 'pages.monitoring.peta-strategis')
+        ->name('monitoring.peta')
+        ->middleware('can:monitoring'); // Sesuaikan permissionnya
 
     Volt::route('/profile', 'pages.profile.index')
         ->name('profile.index')

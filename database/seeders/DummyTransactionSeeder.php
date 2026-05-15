@@ -41,30 +41,35 @@ class DummyTransactionSeeder extends Seeder
         // =========================================================
         // TAMBAHAN: CEK ATAU BUAT INDIKATOR KINERJA (IKU/IKT)
         // =========================================================
-        $indicators = PerformanceIndicator::where('periode_id', $periodeAktif->id)->get();
-        
-        // Jika belum ada IKU/IKT di periode ini, kita buatkan dummy-nya
-        if ($indicators->isEmpty()) {
-            $this->command->info('Membuat data IKU (Sesuai Standar Kemendikbud) dan IKT otomatis...');
-            PerformanceIndicator::insert([
-                // 8 IKU KEMENTERIAN (KEPMENDIKBUDRISTEK)
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-1', 'nama_indikator' => 'Lulusan Mendapat Pekerjaan yang Layak', 'kategori' => 'IKU'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-2', 'nama_indikator' => 'Mahasiswa Mendapat Pengalaman di Luar Kampus', 'kategori' => 'IKU'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-3', 'nama_indikator' => 'Dosen Berkegiatan di Luar Kampus', 'kategori' => 'IKU'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-4', 'nama_indikator' => 'Praktisi Mengajar di Dalam Kampus', 'kategori' => 'IKU'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-5', 'nama_indikator' => 'Hasil Kerja Dosen Digunakan oleh Masyarakat', 'kategori' => 'IKU'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-6', 'nama_indikator' => 'Program Studi Bekerjasama dengan Mitra Kelas Dunia', 'kategori' => 'IKU'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-7', 'nama_indikator' => 'Kelas yang Kolaboratif dan Partisipatif', 'kategori' => 'IKU'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKU-8', 'nama_indikator' => 'Program Studi Berstandar Internasional', 'kategori' => 'IKU'],
+        $this->command->info('Memastikan data 8 IKU dan IKT lengkap...');
 
-                // IKT (INDIKATOR KINERJA TAMBAHAN - KHUSUS KAMPUS)
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKT-1', 'nama_indikator' => 'Persentase Lulusan Tepat Waktu (<= 4 Tahun)', 'kategori' => 'IKT'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKT-2', 'nama_indikator' => 'Publikasi Jurnal Internasional Terindeks Scopus (Non-IKU)', 'kategori' => 'IKT'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKT-3', 'nama_indikator' => 'Implementasi Nilai Al-Islam dan Kemuhammadiyahan (AIK)', 'kategori' => 'IKT'],
-                ['periode_id' => $periodeAktif->id, 'kode_indikator' => 'IKT-4', 'nama_indikator' => 'Pencapaian Akreditasi Unggul/A untuk Program Studi', 'kategori' => 'IKT'],
-            ]);
-            $indicators = PerformanceIndicator::where('periode_id', $periodeAktif->id)->get();
+        $indikatorData = [
+            // 8 IKU KEMENTERIAN (KEPMENDIKBUDRISTEK)
+            ['kode_indikator' => 'IKU-1', 'nama_indikator' => 'Lulusan Mendapat Pekerjaan yang Layak', 'kategori' => 'IKU'],
+            ['kode_indikator' => 'IKU-2', 'nama_indikator' => 'Mahasiswa Mendapat Pengalaman di Luar Kampus', 'kategori' => 'IKU'],
+            ['kode_indikator' => 'IKU-3', 'nama_indikator' => 'Dosen Berkegiatan di Luar Kampus', 'kategori' => 'IKU'],
+            ['kode_indikator' => 'IKU-4', 'nama_indikator' => 'Praktisi Mengajar di Dalam Kampus', 'kategori' => 'IKU'],
+            ['kode_indikator' => 'IKU-5', 'nama_indikator' => 'Hasil Kerja Dosen Digunakan oleh Masyarakat', 'kategori' => 'IKU'],
+            ['kode_indikator' => 'IKU-6', 'nama_indikator' => 'Program Studi Bekerjasama dengan Mitra Kelas Dunia', 'kategori' => 'IKU'],
+            ['kode_indikator' => 'IKU-7', 'nama_indikator' => 'Kelas yang Kolaboratif dan Partisipatif', 'kategori' => 'IKU'],
+            ['kode_indikator' => 'IKU-8', 'nama_indikator' => 'Program Studi Berstandar Internasional', 'kategori' => 'IKU'],
+
+            // IKT (INDIKATOR KINERJA TAMBAHAN - KHUSUS KAMPUS)
+            ['kode_indikator' => 'IKT-1', 'nama_indikator' => 'Persentase Lulusan Tepat Waktu (<= 4 Tahun)', 'kategori' => 'IKT'],
+            ['kode_indikator' => 'IKT-2', 'nama_indikator' => 'Publikasi Jurnal Internasional Terindeks Scopus (Non-IKU)', 'kategori' => 'IKT'],
+            ['kode_indikator' => 'IKT-3', 'nama_indikator' => 'Implementasi Nilai Al-Islam dan Kemuhammadiyahan (AIK)', 'kategori' => 'IKT'],
+            ['kode_indikator' => 'IKT-4', 'nama_indikator' => 'Pencapaian Akreditasi Unggul/A untuk Program Studi', 'kategori' => 'IKT'],
+        ];
+
+        foreach ($indikatorData as $ind) {
+            PerformanceIndicator::firstOrCreate(
+                ['kode_indikator' => $ind['kode_indikator'], 'periode_id' => $periodeAktif->id],
+                ['nama_indikator' => $ind['nama_indikator'], 'kategori' => $ind['kategori']]
+            );
         }
+
+        // Ambil ulang semua indikator yang sudah dipastikan lengkap
+        $indicators = PerformanceIndicator::where('periode_id', $periodeAktif->id)->get();
 
         $satuanTarget = ['%', 'Orang', 'Kegiatan', 'Dokumen', 'Mitra', 'SKS'];
 
