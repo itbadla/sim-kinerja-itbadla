@@ -32,7 +32,7 @@ class PermissionSeeder extends Seeder
             'kinerja-bkd',
             
             // Keuangan
-            'pengajuan-dana', 'verifikasi-keuangan', 'laporan-lpj',
+            'pengajuan-dana', 'verifikasi-keuangan', 'verifikasi-lpj', 'laporan-lpj',
             
             // Administrator
             'kelola-user', 'kelola-unit', 'peran-dan-izin', 'master-jabatan', 'indikator-kinerja'
@@ -46,13 +46,13 @@ class PermissionSeeder extends Seeder
         $rolePermissions = [
             'Rektor'          => ['dasbor', 'profil-saya', 'verifikasi-raker', 'verifikasi-logbook', 'team-saya', 'monitoring-universitas', 'kinerja-bkd'],
             'Wakil Rektor'    => ['dasbor', 'profil-saya', 'verifikasi-raker', 'verifikasi-logbook', 'team-saya', 'monitoring-universitas', 'kinerja-bkd'],
-            'Dekan'           => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya', 'kinerja-bkd'],
-            'Kepala Lembaga'  => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya', 'kinerja-bkd'],
-            'Kepala Biro'     => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya'], // Biasanya Biro non-akademik, tidak wajib BKD
-            'Kepala Unit'     => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya'],
-            'Kaprodi'         => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'team-saya', 'kinerja-bkd'],
-            'Dosen'           => ['dasbor', 'profil-saya', 'logbook-harian', 'pengajuan-dana', 'kinerja-bkd'], // Dosen wajib bisa akses BKD
-            'Staff'           => ['dasbor', 'profil-saya', 'logbook-harian', 'pengajuan-dana'], // Staff biasa tidak butuh akses BKD
+            'Dekan'           => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'laporan-lpj', 'team-saya', 'kinerja-bkd'],
+            'Kepala Lembaga'  => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'laporan-lpj', 'team-saya', 'kinerja-bkd'],
+            'Kepala Biro'     => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'laporan-lpj', 'team-saya'], // Biasanya Biro non-akademik, tidak wajib BKD
+            'Kepala Unit'     => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'laporan-lpj', 'team-saya'],
+            'Kaprodi'         => ['dasbor', 'profil-saya', 'program-kerja', 'logbook-harian', 'verifikasi-logbook', 'pengajuan-dana', 'laporan-lpj', 'team-saya', 'kinerja-bkd'],
+            'Dosen'           => ['dasbor', 'profil-saya', 'logbook-harian', 'pengajuan-dana', 'laporan-lpj', 'kinerja-bkd'], // Dosen wajib bisa akses BKD
+            'Staff'           => ['dasbor', 'profil-saya', 'logbook-harian', 'pengajuan-dana', 'laporan-lpj'], // Staff biasa tidak butuh akses BKD
         ];
 
         foreach ($rolePermissions as $roleName => $perms) {

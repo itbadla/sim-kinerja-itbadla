@@ -13,34 +13,35 @@ return new class extends Migration
     {
         Schema::create('fund_submissions', function (Blueprint $table) {
             $table->id();
+            
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->foreignId('unit_id')->nullable()->constrained('units')->nullOnDelete();
-            
-            // Link ke Proker (Wajib agar terukur)
             $table->foreignId('work_program_id')->nullable()->constrained('work_programs')->nullOnDelete();
             $table->foreignId('periode_id')->constrained('periodes')->cascadeOnDelete();
             
             $table->enum('tipe_pengajuan', ['pribadi', 'lembaga'])->default('pribadi');
-            $table->decimal('nominal', 15, 2);
+            $table->decimal('nominal_total', 15, 2); 
+            $table->decimal('nominal_disetujui', 15, 2)->nullable();
             $table->text('keperluan');
             $table->string('file_lampiran')->nullable(); 
             
-            // Status Alur Pengajuan
-            $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
+            $table->enum('status_pengajuan', ['pending', 'approved', 'rejected'])->default('pending');
             $table->text('catatan_verifikator')->nullable();
             
-            // Bagian LPJ
-            $table->enum('status_lpj', ['belum', 'menunggu_verifikasi', 'selesai'])->default('belum');
-            $table->decimal('nominal_realisasi', 15, 2)->nullable();
-            $table->string('file_lpj')->nullable();
-            $table->timestamp('waktu_pengembalian')->nullable();
-            $table->string('catatan_pengembalian')->nullable();
+            // PELACAKAN VERIFIKATOR PROPOSAL
+            $table->foreignId('verified_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->timestamp('verified_at')->nullable();
+            
+            $table->enum('skema_pencairan', ['lumpsum', 'termin'])->default('lumpsum');
 
             $table->timestamps();
             $table->softDeletes(); 
         });
     }
 
+    /**
+     * Reverse the migrations.
+     */
     public function down(): void
     {
         Schema::dropIfExists('fund_submissions');

@@ -150,6 +150,13 @@ new class extends Component {
         @if(auth()->user()->can('pengajuan-dana') || auth()->user()->can('verifikasi-keuangan') || auth()->user()->can('laporan-lpj'))
             <p class="px-3 text-[10px] font-bold text-theme-muted uppercase tracking-[0.2em] mt-8 mb-4">Modul Keuangan</p>
             
+            @if(auth()->user()->can('verifikasi-keuangan'))
+            <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.dashboard.*') ? 'sidebar-active' : '' }}" :href="route('keuangan.dashboard.index')" :active="request()->routeIs('keuangan.dashboard.*')" wire:navigate>
+                <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                Dashboard Keuangan
+            </x-nav-link-sidebar>
+            @endif
+
             @if(auth()->user()->can('pengajuan-dana'))
             <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.pengajuan.*') ? 'sidebar-active' : '' }}" :href="route('keuangan.pengajuan.index')" :active="request()->routeIs('keuangan.pengajuan.*')" wire:navigate>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -165,7 +172,7 @@ new class extends Component {
             @endif
 
             @if(auth()->user()->can('verifikasi-keuangan'))
-            <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.verifikasi.*') ? 'sidebar-active' : '' }}" :href="route('keuangan.verifikasi.index')" :active="request()->routeIs('keuangan.verifikasi.*')" wire:navigate>
+            <x-nav-link-sidebar class="{{ request()->routeIs('keuangan.verifikasi.*') || request()->routeIs('keuangan.verifikasi-lpj.*') ? 'sidebar-active' : '' }}" :href="route('keuangan.verifikasi.index')" :active="request()->routeIs('keuangan.verifikasi.*') || request()->routeIs('keuangan.verifikasi-lpj.*')" wire:navigate>
                 <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                 Verifikasi Keuangan
             </x-nav-link-sidebar>

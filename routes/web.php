@@ -87,21 +87,30 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // MODUL KEUANGAN
     // ==========================================
     Route::prefix('keuangan')->name('keuangan.')->group(function () {
+        // Dashboard Keuangan (Khusus Pimpinan/Verifikator)
+        Volt::route('/dashboard', 'pages.keuangan.dashboard.index')
+            ->name('dashboard.index')
+            ->middleware('can:verifikasi-keuangan');
         
         // Pengajuan Dana oleh Unit/Staff
         Volt::route('/pengajuan', 'pages.keuangan.pengajuan.index')
             ->name('pengajuan.index')
             ->middleware('can:pengajuan-dana');
             
-        // Laporan Pertanggungjawaban (LPJ)
+        // Laporan Pertanggungjawaban Pengajuan Dana (LPJ)
         Volt::route('/lpj', 'pages.keuangan.lpj.index')
             ->name('lpj.index')
             ->middleware('can:laporan-lpj'); 
 
-        // Verifikasi Keuangan & LPJ oleh Bagian Keuangan
+        // Verifikasi Keuangan Pengajuan Dana dan LPJ
         Volt::route('/verifikasi', 'pages.keuangan.verifikasi.index')
             ->name('verifikasi.index')
             ->middleware('can:verifikasi-keuangan');
+        
+        // Khusus Verifikator LPJ (Split Permission)
+        // Volt::route('/verifikasi-lpj', 'pages.keuangan.verifikasi-lpj.index')
+        //     ->name('verifikasi-lpj.index')
+        //     ->middleware('can:verifikasi-lpj');
     });
 
     Volt::route('/periode', 'pages.periode.index')

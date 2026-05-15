@@ -5,48 +5,45 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class FundSubmission extends Model
 {
     use SoftDeletes;
+
+    protected $table = 'fund_submissions';
 
     protected $fillable = [
         'user_id',
         'unit_id',
         'work_program_id',
         'periode_id',
-        'tipe_pengajuan',
-        'nominal',
+        'tipe_pengajuan', 
+        'nominal_total',
+        'nominal_disetujui',
         'keperluan',
         'file_lampiran',
-        'status',
+        'status_pengajuan', 
         'catatan_verifikator',
-        'status_lpj',
-        'nominal_realisasi',
-        'file_lpj',
-        'waktu_pengembalian',
-        'catatan_pengembalian',
+        'verified_by',     // TAMBAHAN
+        'verified_at',     // TAMBAHAN
+        'skema_pencairan', 
     ];
 
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
+    protected $casts = [
+        'verified_at' => 'datetime',
+    ];
 
-    public function unit(): BelongsTo
-    {
-        return $this->belongsTo(Unit::class);
-    }
+    public function user(): BelongsTo { return $this->belongsTo(User::class); }
+    public function unit(): BelongsTo { return $this->belongsTo(Unit::class); }
+    public function workProgram(): BelongsTo { return $this->belongsTo(WorkProgram::class); }
+    public function periode(): BelongsTo { return $this->belongsTo(Periode::class, 'periode_id'); }
+    
+    // Relasi untuk melacak siapa yang memverifikasi
+    public function verifikator(): BelongsTo { return $this->belongsTo(User::class, 'verified_by'); }
 
-    /**
-     * Pengajuan dana ini merujuk ke Proker mana?
-     */
-    public function workProgram(): BelongsTo
+    public function disbursements(): HasMany
     {
-        return $this->belongsTo(WorkProgram::class);
-    }
-    public function periode(): BelongsTo
-    {
-        return $this->belongsTo(Periode::class, 'periode_id');
+        return $this->hasMany(FundDisbursement::class, 'fund_submission_id')->orderBy('termin_ke', 'asc');
     }
 }
