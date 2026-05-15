@@ -29,13 +29,12 @@ class DatabaseSeeder extends Seeder
         $positionsData = [
             ['nama_jabatan' => 'Rektor', 'level_otoritas' => 1, 'kategori' => 'Pimpinan'],
             ['nama_jabatan' => 'Wakil Rektor', 'level_otoritas' => 2, 'kategori' => 'Pimpinan'],
-            ['nama_jabatan' => 'Dekan', 'level_otoritas' => 2, 'kategori' => 'Struktural'],
-            ['nama_jabatan' => 'Kepala Lembaga', 'level_otoritas' => 3, 'kategori' => 'Struktural'],
-            ['nama_jabatan' => 'Kepala Biro', 'level_otoritas' => 3, 'kategori' => 'Struktural'],
+            ['nama_jabatan' => 'Sekretaris Rektorat', 'level_otoritas' => 2, 'kategori' => 'Administratif'],
+            ['nama_jabatan' => 'Dekan', 'level_otoritas' => 3, 'kategori' => 'Struktural'],
             ['nama_jabatan' => 'Kepala Unit', 'level_otoritas' => 3, 'kategori' => 'Struktural'],
-            ['nama_jabatan' => 'Kaprodi', 'level_otoritas' => 3, 'kategori' => 'Struktural'],
-            ['nama_jabatan' => 'Dosen', 'level_otoritas' => 4, 'kategori' => 'Akademik'],
-            ['nama_jabatan' => 'Staff', 'level_otoritas' => 5, 'kategori' => 'Administratif'],
+            ['nama_jabatan' => 'Kaprodi', 'level_otoritas' => 4, 'kategori' => 'Struktural'],
+            ['nama_jabatan' => 'Dosen', 'level_otoritas' => 5, 'kategori' => 'Akademik'],
+            ['nama_jabatan' => 'Staff', 'level_otoritas' => 6, 'kategori' => 'Administratif'],
         ];
 
         $positions = [];
@@ -59,9 +58,9 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Dr. Hj. Siti Aminah, M.Pd.', 'email' => 'wr1@ahmaddahlan.ac.id', 'pos' => 'Wakil Rektor'],
             ['name' => 'Dr. Andi Wijaya, S.T., M.T.', 'email' => 'wr2@ahmaddahlan.ac.id', 'pos' => 'Wakil Rektor'],
             ['name' => 'Dr. Rina Puspita, S.H., M.H.', 'email' => 'wr3@ahmaddahlan.ac.id', 'pos' => 'Wakil Rektor'],
-            ['name' => 'Dr. Hendra Gunawan, S.Si., M.Sc.', 'email' => 'lpm@ahmaddahlan.ac.id', 'pos' => 'Kepala Lembaga'],
-            ['name' => 'Prof. Dr. Wahyu Hidayat, M.Si.', 'email' => 'lppm@ahmaddahlan.ac.id', 'pos' => 'Kepala Lembaga'],
-            ['name' => 'Nita Marlina, S.I.Kom.', 'email' => 'sekretaris@ahmaddahlan.ac.id', 'pos' => 'Staff'],
+            ['name' => 'Dr. Hendra Gunawan, S.Si., M.Sc.', 'email' => 'lpm@ahmaddahlan.ac.id', 'pos' => 'Kepala Unit'],
+            ['name' => 'Prof. Dr. Wahyu Hidayat, M.Si.', 'email' => 'lppm@ahmaddahlan.ac.id', 'pos' => 'Kepala Unit'],
+            ['name' => 'Nita Marlina, S.I.Kom.', 'email' => 'sekretaris@ahmaddahlan.ac.id', 'pos' => 'Sekretaris Rektorat'],
             ['name' => 'Ahmad Zafa, S.Kom.', 'email' => 'jarkomit@ahmaddahlan.ac.id', 'pos' => 'Kepala Unit'],
             ['name' => 'Dr. Bambang Riyanto, S.T., M.Kom.', 'email' => 'dekan.ft@ahmaddahlan.ac.id', 'pos' => 'Dekan'],
             ['name' => 'Dr. Maya Fitriani, S.E., M.Ak.', 'email' => 'dekan.feb@ahmaddahlan.ac.id', 'pos' => 'Dekan'],
@@ -87,6 +86,7 @@ class DatabaseSeeder extends Seeder
         $wr1 = Unit::create(['kode_unit' => 'WR1', 'nama_unit' => 'Wakil Rektor I (Akademik)', 'parent_id' => $rektorat->id, 'kepala_unit_id' => $users['wr1@ahmaddahlan.ac.id']['id']]);
         $wr2 = Unit::create(['kode_unit' => 'WR2', 'nama_unit' => 'Wakil Rektor II (Keuangan & SDM)', 'parent_id' => $rektorat->id, 'kepala_unit_id' => $users['wr2@ahmaddahlan.ac.id']['id']]);
         $wr3 = Unit::create(['kode_unit' => 'WR3', 'nama_unit' => 'Wakil Rektor III (Kemahasiswaan & AIK)', 'parent_id' => $rektorat->id, 'kepala_unit_id' => $users['wr3@ahmaddahlan.ac.id']['id']]);
+        $sekretaris = Unit::create(['kode_unit' => 'SEK', 'nama_unit' => 'Sekretaris Rektorat', 'parent_id' => $rektorat->id, 'kepala_unit_id' => $users['sekretaris@ahmaddahlan.ac.id']['id']]);
 
         // =========================================================
         // 5. UNIT LEVEL 3 (DI BAWAH WR)
@@ -96,7 +96,7 @@ class DatabaseSeeder extends Seeder
         $ft = Unit::create(['kode_unit' => 'FT', 'nama_unit' => 'Fakultas Teknik', 'parent_id' => $wr1->id, 'kepala_unit_id' => $users['dekan.ft@ahmaddahlan.ac.id']['id']]);
         $feb = Unit::create(['kode_unit' => 'FEB', 'nama_unit' => 'Fakultas Ekonomi & Bisnis', 'parent_id' => $wr1->id, 'kepala_unit_id' => $users['dekan.feb@ahmaddahlan.ac.id']['id']]);
 
-        Unit::create(['kode_unit' => 'JARKOM', 'nama_unit' => 'Pusat Jarkomit', 'parent_id' => $wr2->id, 'kepala_unit_id' => $users['jarkomit@ahmaddahlan.ac.id']['id']]);
+        Unit::create(['kode_unit' => 'JARKOM', 'nama_unit' => 'Jarkomit', 'parent_id' => $wr2->id, 'kepala_unit_id' => $users['jarkomit@ahmaddahlan.ac.id']['id']]);
         Unit::create(['kode_unit' => 'SDI', 'nama_unit' => 'Biro Sumber Daya Insani', 'parent_id' => $wr2->id]);
         Unit::create(['kode_unit' => 'LAIK', 'nama_unit' => 'Lembaga AIK', 'parent_id' => $wr3->id]);
 

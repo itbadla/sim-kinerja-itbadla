@@ -36,6 +36,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Volt::route('/dashboard', 'pages.dashboard')
         ->name('dashboard')
         ->middleware('can:dasbor');
+    
+    Volt::route('/monitoring', 'pages.monitoring.index')
+        ->name('monitoring.index')
+        ->middleware('can:monitoring'); 
 
     Volt::route('/profile', 'pages.profile.index')
         ->name('profile.index')
